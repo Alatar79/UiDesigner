@@ -4,6 +4,8 @@
               addUsingNamespaceToJuceHeader="0" jucerFormatVersion="1">
   <MAINGROUP id="eFPESu" name="UiDesigner">
     <GROUP id="{6D839B89-7DA7-2A46-4C0D-5092340B227D}" name="Source">
+      <FILE id="ACBj7L" name="Shape.cpp" compile="1" resource="0" file="Source/Shape.cpp"/>
+      <FILE id="tmBot6" name="Shape.h" compile="0" resource="0" file="Source/Shape.h"/>
       <FILE id="nBY5Bf" name="MainComponent.cpp" compile="1" resource="0"
             file="Source/MainComponent.cpp"/>
       <FILE id="ctWUWd" name="MainComponent.h" compile="0" resource="0" file="Source/MainComponent.h"/>
