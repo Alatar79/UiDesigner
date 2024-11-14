@@ -52,6 +52,7 @@ public:
         float strokeWidth;
         StrokePattern strokePattern;
         bool hasFill;
+        float cornerRadius = 0.0f;  // Add this line
     };
 
     struct Shape
@@ -100,6 +101,8 @@ private:
     juce::TextButton strokeColorButton{ "Stroke Color" };
     juce::Label fillColorLabel;
     juce::Label strokeColorLabel;
+    juce::Slider cornerRadiusSlider;
+    juce::Label cornerRadiusLabel;
     
     StrokePatternButton solidStrokeButton{ "Solid" };
     StrokePatternButton dashedStrokeButton{ "Dashed" };

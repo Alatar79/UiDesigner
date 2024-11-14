@@ -176,6 +176,23 @@ MainComponent::MainComponent()
         currentStyle.hasFill = fillToggle.getToggleState();
         repaint();
     };
+    
+    // Initialize corner radius controls
+    addAndMakeVisible(cornerRadiusSlider);
+    cornerRadiusSlider.setRange(0.0, 50.0, 1.0);
+    cornerRadiusSlider.setValue(0.0);
+    cornerRadiusSlider.addListener(this);
+    
+    addAndMakeVisible(cornerRadiusLabel);
+    cornerRadiusLabel.setText("Corner Radius:", juce::dontSendNotification);
+    cornerRadiusLabel.attachToComponent(&cornerRadiusSlider, true);
+
+    // Style the slider and label like your other controls
+    cornerRadiusLabel.setColour(juce::Label::textColourId, juce::Colours::black);
+    cornerRadiusSlider.setTextBoxStyle(juce::Slider::TextBoxLeft, false, 50, 20);
+    cornerRadiusSlider.setColour(juce::Slider::textBoxTextColourId, juce::Colours::black);
+
+    
 }
 
 
@@ -186,11 +203,20 @@ void MainComponent::paint(juce::Graphics& g)
     auto drawRect = [&](const juce::Rectangle<float>& bounds, const Style& style)
     {
         if (style.hasFill)
-            g.fillRect(bounds);
+        {
+            if (style.cornerRadius > 0.0f)
+                g.fillRoundedRectangle(bounds, style.cornerRadius);
+            else
+                g.fillRect(bounds);
+        }
+        
         drawStrokedPath(g, style, [&]()
         {
             juce::Path path;
-            path.addRectangle(bounds);
+            if (style.cornerRadius > 0.0f)
+                path.addRoundedRectangle(bounds, style.cornerRadius);
+            else
+                path.addRectangle(bounds);
             return path;
         });
     };
@@ -295,6 +321,10 @@ void MainComponent::resized()
     auto labelWidth = 80;
     strokeWidthSlider.setBounds(padding + labelWidth, y, 200, buttonHeight);
     
+    // Add corner radius control
+    y += buttonHeight + padding;
+    cornerRadiusSlider.setBounds(padding + labelWidth, y, 200, buttonHeight);
+    
     y += buttonHeight + padding;
     fillColorButton.setBounds(padding + labelWidth, y, colorButtonWidth, buttonHeight);
     fillColorLabel.setBounds(padding, y, labelWidth, buttonHeight);
@@ -365,6 +395,11 @@ void MainComponent::sliderValueChanged(juce::Slider* slider)
     if (slider == &strokeWidthSlider)
     {
         currentStyle.strokeWidth = (float)slider->getValue();
+        repaint();
+    }
+    else if (slider == &cornerRadiusSlider)
+    {
+        currentStyle.cornerRadius = (float)slider->getValue();
         repaint();
     }
 }
