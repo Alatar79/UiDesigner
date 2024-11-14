@@ -17,7 +17,7 @@ StrokePatternButton::StrokePatternButton(const juce::String& name) : juce::Butto
     
 void StrokePatternButton::paintButton(juce::Graphics& g, bool isMouseOver, bool isButtonDown)
 {
-    auto bounds = getLocalBounds().toFloat().reduced(2);
+    auto bounds = getLocalBounds();
     g.setColour(isButtonDown ? juce::Colours::darkgrey : (isMouseOver ? juce::Colours::lightgrey : juce::Colours::white));
     g.fillRect(bounds);
     
@@ -52,6 +52,8 @@ void StrokePatternButton::paintButton(juce::Graphics& g, bool isMouseOver, bool 
 
 MainComponent::MainComponent()
 {
+    setName("MainComponent");
+    
     // Initialize tools
     addAndMakeVisible(rectangleButton);
     addAndMakeVisible(ellipseButton);
@@ -61,9 +63,18 @@ MainComponent::MainComponent()
     ellipseButton.setButtonText("Ellipse");
     lineButton.setButtonText("Line");
     
-    rectangleButton.onClick = [this] { currentTool = Tool::Rectangle; };
-    ellipseButton.onClick = [this] { currentTool = Tool::Ellipse; };
-    lineButton.onClick = [this] { currentTool = Tool::Line; };
+    rectangleButton.onClick = [this]
+    {
+        currentTool = Tool::Rectangle;
+    };
+    ellipseButton.onClick = [this]
+    {
+        currentTool = Tool::Ellipse;
+    };
+    lineButton.onClick = [this]
+    {
+        currentTool = Tool::Line;
+    };
 
     // Initialize stroke width slider
     addAndMakeVisible(strokeWidthSlider);
@@ -82,15 +93,30 @@ MainComponent::MainComponent()
     strokeColorButton.setColour(juce::TextButton::buttonColourId, currentStyle.strokeColour);
 
      // Fix stroke pattern button handling
-     solidStrokeButton.onClick = [this] { currentStyle.strokePattern = StrokePattern::Solid; repaint(); };
-     dashedStrokeButton.onClick = [this] { currentStyle.strokePattern = StrokePattern::Dashed; repaint(); };
-     dottedStrokeButton.onClick = [this] { currentStyle.strokePattern = StrokePattern::Dotted; repaint(); };
-     dashDotStrokeButton.onClick = [this] { currentStyle.strokePattern = StrokePattern::DashDot; repaint(); };
+     solidStrokeButton.onClick = [this]
+     {
+         currentStyle.strokePattern = StrokePattern::Solid;
+         repaint();
+     };
+     dashedStrokeButton.onClick = [this]
+     {
+         currentStyle.strokePattern = StrokePattern::Dashed;
+         repaint();
+     };
+     dottedStrokeButton.onClick = [this]
+     {
+         currentStyle.strokePattern = StrokePattern::Dotted;
+         repaint();
+     };
+     dashDotStrokeButton.onClick = [this]
+     {
+         currentStyle.strokePattern = StrokePattern::DashDot;
+         repaint();
+     };
 
-     // Fix slider text visibility
-     strokeWidthLabel.setColour(juce::Label::textColourId, juce::Colours::black);
-     strokeWidthSlider.setTextBoxStyle(juce::Slider::TextBoxLeft, false, 50, 20);
-     strokeWidthSlider.setColour(juce::Slider::textBoxTextColourId, juce::Colours::black);
+    strokeWidthLabel.setColour(juce::Label::textColourId, juce::Colours::black);
+    strokeWidthSlider.setTextBoxStyle(juce::Slider::TextBoxLeft, false, 50, 20);
+    strokeWidthSlider.setColour(juce::Slider::textBoxTextColourId, juce::Colours::black);
     
     // Initialize color buttons
     addAndMakeVisible(fillColorButton);
@@ -101,8 +127,14 @@ MainComponent::MainComponent()
     fillColorButton.setColour(juce::TextButton::buttonColourId, currentStyle.fillColour);
     strokeColorButton.setColour(juce::TextButton::buttonColourId, currentStyle.strokeColour);
     
-    fillColorButton.onClick = [this] { showColorPicker(true); };
-    strokeColorButton.onClick = [this] { showColorPicker(false); };
+    fillColorButton.onClick = [this]
+    {
+        showColorPicker(true);
+    };
+    strokeColorButton.onClick = [this]
+    {
+        showColorPicker(false);
+    };
     
     fillColorLabel.setText("Fill:", juce::dontSendNotification);
     strokeColorLabel.setText("Stroke:", juce::dontSendNotification);
@@ -135,8 +167,12 @@ MainComponent::MainComponent()
     // Initialize fill toggle
     addAndMakeVisible(fillToggle);
     fillToggle.setButtonText("Enable Fill");
+    fillToggle.setColour(juce::ToggleButton::textColourId, juce::Colours::black);
+    fillToggle.setColour(juce::ToggleButton::tickColourId, juce::Colours::black);
+    fillToggle.setColour(juce::ToggleButton::tickDisabledColourId, juce::Colours::black);
     fillToggle.setToggleState(true, juce::dontSendNotification);
-    fillToggle.onClick = [this] {
+    fillToggle.onClick = [this]
+    {
         currentStyle.hasFill = fillToggle.getToggleState();
         repaint();
     };
@@ -147,6 +183,42 @@ void MainComponent::paint(juce::Graphics& g)
 {
     g.fillAll(juce::Colours::white);
     
+    auto drawRect = [&](const juce::Rectangle<float>& bounds, const Style& style)
+    {
+        if (style.hasFill)
+            g.fillRect(bounds);
+        drawStrokedPath(g, style, [&]()
+        {
+            juce::Path path;
+            path.addRectangle(bounds);
+            return path;
+        });
+    };
+    
+    auto drawEllipse = [&](const juce::Rectangle<float>& bounds, const Style& style)
+    {
+        if (style.hasFill)
+            g.fillEllipse(bounds);
+        drawStrokedPath(g, style, [&]()
+        {
+            juce::Path path;
+            path.addEllipse(bounds);
+            return path;
+        });
+    };
+    
+    auto drawLine = [&](const juce::Point<float> start, const juce::Point<float> end, const Style style)
+    {
+        drawStrokedPath(g, style, [&]()
+        {
+            juce::Path path;
+            path.startNewSubPath(start);
+            path.lineTo(end);
+            return path;
+        });
+    };
+    
+    
     // Draw all completed shapes
     for (const auto& shape : shapes)
     {
@@ -156,34 +228,17 @@ void MainComponent::paint(juce::Graphics& g)
         {
             case Tool::Rectangle:
             {
-                if (shape.style.hasFill)
-                    g.fillRect(shape.bounds);
-                drawStrokedPath(g, shape.style, [&]() {
-                    juce::Path path;
-                    path.addRectangle(shape.bounds);
-                    return path;
-                });
+                drawRect(shape.bounds, shape.style);
                 break;
             }
             case Tool::Ellipse:
             {
-                if (shape.style.hasFill)
-                    g.fillEllipse(shape.bounds);
-                drawStrokedPath(g, shape.style, [&]() {
-                    juce::Path path;
-                    path.addEllipse(shape.bounds);
-                    return path;
-                });
+                drawEllipse(shape.bounds, shape.style);
                 break;
             }
             case Tool::Line:
             {
-                drawStrokedPath(g, shape.style, [&]() {
-                    juce::Path path;
-                    path.startNewSubPath(shape.startPoint);
-                    path.lineTo(shape.endPoint);
-                    return path;
-                });
+                drawLine(shape.startPoint, shape.endPoint, shape.style);
                 break;
             }
             default:
@@ -200,36 +255,19 @@ void MainComponent::paint(juce::Graphics& g)
         {
             case Tool::Rectangle:
             {
-                auto bounds = getBoundsFromPoints(dragStart, dragEnd);
-                if (currentStyle.hasFill)
-                    g.fillRect(bounds);
-                drawStrokedPath(g, currentStyle, [&]() {
-                    juce::Path path;
-                    path.addRectangle(bounds);
-                    return path;
-                });
+                auto bounds = juce::Rectangle<float>(dragStart, dragEnd);
+                drawRect(bounds, currentStyle);
                 break;
             }
             case Tool::Ellipse:
             {
-                auto bounds = getBoundsFromPoints(dragStart, dragEnd);
-                if (currentStyle.hasFill)
-                    g.fillEllipse(bounds);
-                drawStrokedPath(g, currentStyle, [&]() {
-                    juce::Path path;
-                    path.addEllipse(bounds);
-                    return path;
-                });
+                auto bounds = juce::Rectangle<float>(dragStart, dragEnd);
+                drawEllipse(bounds, currentStyle);
                 break;
             }
             case Tool::Line:
             {
-                drawStrokedPath(g, currentStyle, [&]() {
-                    juce::Path path;
-                    path.startNewSubPath(dragStart);
-                    path.lineTo(dragEnd);
-                    return path;
-                });
+                drawLine(dragStart, dragEnd, currentStyle);
                 break;
             }
             default:
@@ -307,7 +345,7 @@ void MainComponent::mouseUp(const juce::MouseEvent& e)
         {
             case Tool::Rectangle:
             case Tool::Ellipse:
-                shape.bounds = getBoundsFromPoints(dragStart, dragEnd);
+                shape.bounds = juce::Rectangle<float>(dragStart, dragEnd);
                 break;
             case Tool::Line:
                 shape.startPoint = dragStart;
@@ -393,6 +431,7 @@ void MainComponent::drawStrokedPath(juce::Graphics& g, const Style& style, PathF
         
         // Scale dash lengths based on stroke width to maintain visible pattern
         float scale = juce::jmax(1.0f, style.strokeWidth * 0.5f);
+        scale = 1.0f;
         
         switch (style.strokePattern)
         {
@@ -423,22 +462,12 @@ void MainComponent::drawStrokedPath(juce::Graphics& g, const Style& style, PathF
         
         juce::Path dashedPath;
         juce::PathStrokeType strokeType(
-            style.strokeWidth *0.5f,
+            style.strokeWidth * 0.5f,
             juce::PathStrokeType::mitered,     // Joint style
-            juce::PathStrokeType::square   // End cap style
+            juce::PathStrokeType::butt   // End cap style
         );
         
         strokeType.createDashedStroke(dashedPath, path, dashLengths, numDashLengths);
         g.strokePath(dashedPath, strokeType);
     }
-}
-
-juce::Rectangle<float> MainComponent::getBoundsFromPoints(const juce::Point<float>& p1, const juce::Point<float>& p2)
-{
-    auto x = juce::jmin(p1.x, p2.x);
-    auto y = juce::jmin(p1.y, p2.y);
-    auto width = std::abs(p2.x - p1.x);
-    auto height = std::abs(p2.y - p1.y);
-    
-    return juce::Rectangle<float>(x, y, width, height);
 }

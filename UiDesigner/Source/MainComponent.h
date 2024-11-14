@@ -88,9 +88,6 @@ private:
     template<typename PathFunction>
     void drawStrokedPath(juce::Graphics& g, const Style& style, PathFunction&& pathFunc);
 
-
-    juce::Rectangle<float> getBoundsFromPoints(const juce::Point<float>& p1, const juce::Point<float>& p2);
-
     // UI Components
     juce::TextButton rectangleButton;
     juce::TextButton ellipseButton;
