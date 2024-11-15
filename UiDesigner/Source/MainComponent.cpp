@@ -192,6 +192,17 @@ MainComponent::MainComponent()
     cornerRadiusSlider.setTextBoxStyle(juce::Slider::TextBoxLeft, false, 50, 20);
     cornerRadiusSlider.setColour(juce::Slider::textBoxTextColourId, juce::Colours::black);
 
+    // Add Select tool button
+    addAndMakeVisible(selectButton);
+    selectButton.setButtonText("Select");
+    selectButton.onClick = [this]
+    {
+        currentTool = Tool::Select;
+    };
+
+    // Enable keyboard listening
+    addKeyListener(this);
+    setWantsKeyboardFocus(true);
     
 }
 
@@ -300,6 +311,41 @@ void MainComponent::paint(juce::Graphics& g)
                 break;
         }
     }
+    
+    // Draw selection indicators
+    if (selectedShapeIndex >= 0 && selectedShapeIndex < shapes.size())
+    {
+        auto& selectedShape = shapes.getReference(selectedShapeIndex);//shapes[selectedShapeIndex];
+        
+        // Draw selection outline
+        g.setColour(juce::Colours::blue);
+        
+        if (selectedShape.rotation != 0.0f)
+        {
+            // For rotated shapes, we need to draw a rotated rectangle
+            juce::Path path;
+            path.addRectangle(selectedShape.bounds);
+            g.addTransform(juce::AffineTransform::rotation(
+                selectedShape.rotation,
+                selectedShape.bounds.getCentreX(),
+                selectedShape.bounds.getCentreY()));
+            g.strokePath(path, juce::PathStrokeType(1.0f, juce::PathStrokeType::mitered));
+            g.addTransform(juce::AffineTransform::rotation(
+                -selectedShape.rotation,
+                selectedShape.bounds.getCentreX(),
+                selectedShape.bounds.getCentreY()));
+        }
+        else
+        {
+            // For non-rotated shapes, just draw the bounds
+            g.drawRect(selectedShape.bounds, 1.0f);
+        }
+
+        // Draw selection handles
+        for (auto& handle : selectionHandles)
+            handle.paint(g);
+    }
+    
 }
  
 void MainComponent::resized()
@@ -312,9 +358,10 @@ void MainComponent::resized()
     auto y = padding;
     
     // Tool buttons
-    rectangleButton.setBounds(padding, y, buttonWidth, buttonHeight);
-    ellipseButton.setBounds(padding * 2 + buttonWidth, y, buttonWidth, buttonHeight);
-    lineButton.setBounds(padding * 3 + buttonWidth * 2, y, buttonWidth, buttonHeight);
+    selectButton.setBounds(padding, y, buttonWidth, buttonHeight);
+    rectangleButton.setBounds(padding * 2 + buttonWidth, y, buttonWidth, buttonHeight);
+    ellipseButton.setBounds(padding * 3 + buttonWidth * 2, y, buttonWidth, buttonHeight);
+    lineButton.setBounds(padding * 4 + buttonWidth * 3, y, buttonWidth, buttonHeight);
     
     // Style controls
     y += buttonHeight + padding;
@@ -344,7 +391,55 @@ void MainComponent::resized()
 
 void MainComponent::mouseDown(const juce::MouseEvent& e)
 {
-    if (e.y > 200) // Don't draw in the UI area
+    if (e.y < 200) // Don't handle clicks in the UI area
+        return;
+
+    lastMousePosition = e.position;
+
+    if (currentTool == Tool::Select)
+    {
+        // Check for handle interaction first
+        for (int i = 0; i < selectionHandles.size(); ++i)
+        {
+            if (selectionHandles[i].hitTest(e.position))
+            {
+                isDraggingHandle = true;
+                activeHandle = selectionHandles[i].getType();
+                
+                if (activeHandle == SelectionHandle::Type::Rotate)
+                {
+                    // Store initial angle for rotation
+                    auto& shape = shapes.getReference(selectedShapeIndex);//shapes[selectedShapeIndex];
+                    auto center = shape.bounds.getCentre();
+                    initialAngle = std::atan2(e.position.y - center.y,
+                                            e.position.x - center.x);
+                    initialRotation = shape.rotation;
+                }
+                return;
+            }
+        }
+
+        // Check for shape selection
+        bool foundShape = false;
+        for (int i = shapes.size() - 1; i >= 0; --i)
+        {
+            if (shapes[i].hitTest(e.position))
+            {
+                selectedShapeIndex = i;
+                isDraggingShape = true;
+                updateSelectionHandles();
+                foundShape = true;
+                break;
+            }
+        }
+
+        if (!foundShape)
+        {
+            selectedShapeIndex = -1;
+            updateSelectionHandles();
+        }
+    }
+    else
     {
         isDrawing = true;
         dragStart = e.position;
@@ -354,7 +449,11 @@ void MainComponent::mouseDown(const juce::MouseEvent& e)
 
 void MainComponent::mouseDrag(const juce::MouseEvent& e)
 {
-    if (isDrawing)
+    if (currentTool == Tool::Select)
+    {
+        handleShapeManipulation(e);
+    }
+    else if (isDrawing)
     {
         dragEnd = e.position;
         repaint();
@@ -363,8 +462,14 @@ void MainComponent::mouseDrag(const juce::MouseEvent& e)
 
 void MainComponent::mouseUp(const juce::MouseEvent& e)
 {
-    if (isDrawing)
+    if (currentTool == Tool::Select)
     {
+        isDraggingShape = false;
+        isDraggingHandle = false;
+    }
+    else if (isDrawing)
+    {
+        // Existing shape creation code
         isDrawing = false;
         
         Shape shape;
@@ -380,6 +485,11 @@ void MainComponent::mouseUp(const juce::MouseEvent& e)
             case Tool::Line:
                 shape.startPoint = dragStart;
                 shape.endPoint = dragEnd;
+                shape.bounds = juce::Rectangle<float>(
+                    juce::Point<float>(juce::jmin(dragStart.x, dragEnd.x),
+                                     juce::jmin(dragStart.y, dragEnd.y)),
+                    juce::Point<float>(juce::jmax(dragStart.x, dragEnd.x),
+                                     juce::jmax(dragStart.y, dragEnd.y)));
                 break;
             default:
                 break;
@@ -388,6 +498,109 @@ void MainComponent::mouseUp(const juce::MouseEvent& e)
         shapes.add(shape);
         repaint();
     }
+}
+
+void MainComponent::handleShapeManipulation(const juce::MouseEvent& e)
+{
+    if (selectedShapeIndex >= 0 && selectedShapeIndex < shapes.size())
+    {
+        auto delta = e.position - lastMousePosition;
+        auto& shape = shapes.getReference(selectedShapeIndex);//shapes[selectedShapeIndex];
+
+        if (isDraggingHandle)
+        {
+            if (activeHandle == SelectionHandle::Type::Rotate)
+            {
+                rotateShape(e);
+            }
+            else
+            {
+                resizeShape(e);
+            }
+        }
+        else if (isDraggingShape)
+        {
+            // Move the shape
+            shape.move(delta.x, delta.y);
+            updateSelectionHandles();
+        }
+
+        repaint();
+    }
+
+    lastMousePosition = e.position;
+}
+
+void MainComponent::rotateShape(const juce::MouseEvent& e)
+{
+    auto& shape = shapes.getReference(selectedShapeIndex);//shapes[selectedShapeIndex];
+    auto center = shape.bounds.getCentre();
+    
+    // Calculate current angle
+    float currentAngle = std::atan2(e.position.y - center.y,
+                                   e.position.x - center.x);
+    
+    // Update shape rotation
+    shape.rotation = initialRotation + (currentAngle - initialAngle);
+    
+    updateSelectionHandles();
+}
+
+void MainComponent::resizeShape(const juce::MouseEvent& e)
+{
+    auto& shape = shapes.getReference(selectedShapeIndex);//shapes[selectedShapeIndex];
+    auto originalBounds = shape.bounds;
+    auto delta = e.position - lastMousePosition;
+
+    // Handle resizing based on the active handle
+    switch (activeHandle)
+    {
+        case SelectionHandle::Type::TopLeft:
+            shape.bounds.setTop(shape.bounds.getY() + delta.y);
+            shape.bounds.setLeft(shape.bounds.getX() + delta.x);
+            break;
+        case SelectionHandle::Type::Top:
+            shape.bounds.setTop(shape.bounds.getY() + delta.y);
+            break;
+        case SelectionHandle::Type::TopRight:
+            shape.bounds.setTop(shape.bounds.getY() + delta.y);
+            shape.bounds.setRight(shape.bounds.getRight() + delta.x);
+            break;
+        case SelectionHandle::Type::Right:
+            shape.bounds.setRight(shape.bounds.getRight() + delta.x);
+            break;
+        case SelectionHandle::Type::BottomRight:
+            shape.bounds.setBottom(shape.bounds.getBottom() + delta.y);
+            shape.bounds.setRight(shape.bounds.getRight() + delta.x);
+            break;
+        case SelectionHandle::Type::Bottom:
+            shape.bounds.setBottom(shape.bounds.getBottom() + delta.y);
+            break;
+        case SelectionHandle::Type::BottomLeft:
+            shape.bounds.setBottom(shape.bounds.getBottom() + delta.y);
+            shape.bounds.setLeft(shape.bounds.getX() + delta.x);
+            break;
+        case SelectionHandle::Type::Left:
+            shape.bounds.setLeft(shape.bounds.getX() + delta.x);
+            break;
+        default:
+            break;
+    }
+
+    // Update line endpoints if it's a line
+    if (shape.type == Tool::Line)
+    {
+        // Calculate how the line endpoints should move based on the bounds changes
+        float scaleX = shape.bounds.getWidth() / originalBounds.getWidth();
+        float scaleY = shape.bounds.getHeight() / originalBounds.getHeight();
+        
+        shape.startPoint.x = shape.bounds.getX() + (shape.startPoint.x - originalBounds.getX()) * scaleX;
+        shape.startPoint.y = shape.bounds.getY() + (shape.startPoint.y - originalBounds.getY()) * scaleY;
+        shape.endPoint.x = shape.bounds.getX() + (shape.endPoint.x - originalBounds.getX()) * scaleX;
+        shape.endPoint.y = shape.bounds.getY() + (shape.endPoint.y - originalBounds.getY()) * scaleY;
+    }
+
+    updateSelectionHandles();
 }
 
 void MainComponent::sliderValueChanged(juce::Slider* slider)
@@ -420,6 +633,92 @@ void MainComponent::changeListenerCallback(juce::ChangeBroadcaster* source)
         }
         repaint();
     }
+}
+
+bool MainComponent::keyPressed(const juce::KeyPress& key, Component* /*originatingComponent*/)
+{
+    if (selectedShapeIndex >= 0 && selectedShapeIndex < shapes.size())
+    {
+        auto& shape = shapes.getReference(selectedShapeIndex);//shapes[selectedShapeIndex];
+        
+        if (key == juce::KeyPress::deleteKey || key == juce::KeyPress::backspaceKey)
+        {
+            // Delete selected shape
+            shapes.remove(selectedShapeIndex);
+            selectedShapeIndex = -1;
+            updateSelectionHandles();
+            repaint();
+            return true;
+        }
+        else if (key.isKeyCode(juce::KeyPress::leftKey))
+        {
+            // Move left
+            shape.move(-1.0f, 0.0f);
+            updateSelectionHandles();
+            repaint();
+            return true;
+        }
+        else if (key.isKeyCode(juce::KeyPress::rightKey))
+        {
+            // Move right
+            shape.move(1.0f, 0.0f);
+            updateSelectionHandles();
+            repaint();
+            return true;
+        }
+        else if (key.isKeyCode(juce::KeyPress::upKey))
+        {
+            // Move up
+            shape.move(0.0f, -1.0f);
+            updateSelectionHandles();
+            repaint();
+            return true;
+        }
+        else if (key.isKeyCode(juce::KeyPress::downKey))
+        {
+            // Move down
+            shape.move(0.0f, 1.0f);
+            updateSelectionHandles();
+            repaint();
+            return true;
+        }
+        // Add shift+arrow keys for bigger movements
+        else if (key.isKeyCode(juce::KeyPress::leftKey) && key.getModifiers().isShiftDown())
+        {
+            shape.move(-10.0f, 0.0f);
+            updateSelectionHandles();
+            repaint();
+            return true;
+        }
+        else if (key.isKeyCode(juce::KeyPress::rightKey) && key.getModifiers().isShiftDown())
+        {
+            shape.move(10.0f, 0.0f);
+            updateSelectionHandles();
+            repaint();
+            return true;
+        }
+        else if (key.isKeyCode(juce::KeyPress::upKey) && key.getModifiers().isShiftDown())
+        {
+            shape.move(0.0f, -10.0f);
+            updateSelectionHandles();
+            repaint();
+            return true;
+        }
+        else if (key.isKeyCode(juce::KeyPress::downKey) && key.getModifiers().isShiftDown())
+        {
+            shape.move(0.0f, 10.0f);
+            updateSelectionHandles();
+            repaint();
+            return true;
+        }
+    }
+    
+    return false;
+}
+
+bool MainComponent::keyStateChanged(bool isKeyDown, Component *originatingComponent)
+{
+    return false; 
 }
 
 void MainComponent::showColorPicker(bool isFillColor)
@@ -504,5 +803,35 @@ void MainComponent::drawStrokedPath(juce::Graphics& g, const Style& style, PathF
         
         strokeType.createDashedStroke(dashedPath, path, dashLengths, numDashLengths);
         g.strokePath(dashedPath, strokeType);
+    }
+}
+
+void MainComponent::updateSelectionHandles()
+{
+    if (selectedShapeIndex >= 0 && selectedShapeIndex < shapes.size())
+    {
+        selectionHandles.clear();
+        const auto& shape = shapes[selectedShapeIndex];
+
+        // Add resize handles
+        selectionHandles.add(SelectionHandle(SelectionHandle::Type::TopLeft));
+        selectionHandles.add(SelectionHandle(SelectionHandle::Type::Top));
+        selectionHandles.add(SelectionHandle(SelectionHandle::Type::TopRight));
+        selectionHandles.add(SelectionHandle(SelectionHandle::Type::Right));
+        selectionHandles.add(SelectionHandle(SelectionHandle::Type::BottomRight));
+        selectionHandles.add(SelectionHandle(SelectionHandle::Type::Bottom));
+        selectionHandles.add(SelectionHandle(SelectionHandle::Type::BottomLeft));
+        selectionHandles.add(SelectionHandle(SelectionHandle::Type::Left));
+        
+        // Add rotation handle
+        selectionHandles.add(SelectionHandle(SelectionHandle::Type::Rotate));
+
+        // Update handle positions
+        for (auto& handle : selectionHandles)
+            handle.updatePosition(shape.bounds, shape.rotation);
+    }
+    else
+    {
+        selectionHandles.clear();
     }
 }
