@@ -255,11 +255,22 @@ void MainComponent::paint(juce::Graphics& g)
         });
     };
     
-    
     // Draw all completed shapes
     for (const auto& shape : shapes)
     {
         applyStyle(g, shape.style);
+        
+        // Save current transform
+        juce::AffineTransform transform;
+        if (shape.rotation != 0.0f)
+        {
+            // Apply rotation transform
+            g.saveState();
+            g.addTransform(juce::AffineTransform::rotation(
+                shape.rotation,
+                shape.bounds.getCentreX(),
+                shape.bounds.getCentreY()));
+        }
         
         switch (shape.type)
         {
@@ -280,6 +291,12 @@ void MainComponent::paint(juce::Graphics& g)
             }
             default:
                 break;
+        }
+        
+        // Restore original transform if we rotated
+        if (shape.rotation != 0.0f)
+        {
+            g.restoreState();
         }
     }
     
@@ -409,7 +426,7 @@ void MainComponent::mouseDown(const juce::MouseEvent& e)
                 if (activeHandle == SelectionHandle::Type::Rotate)
                 {
                     // Store initial angle for rotation
-                    auto& shape = shapes.getReference(selectedShapeIndex);//shapes[selectedShapeIndex];
+                    auto& shape = shapes.getReference(selectedShapeIndex);
                     auto center = shape.bounds.getCentre();
                     initialAngle = std::atan2(e.position.y - center.y,
                                             e.position.x - center.x);
@@ -425,15 +442,18 @@ void MainComponent::mouseDown(const juce::MouseEvent& e)
         {
             if (shapes[i].hitTest(e.position))
             {
-                selectedShapeIndex = i;
+                if (selectedShapeIndex != i) // Only update if selecting a different shape
+                {
+                    selectedShapeIndex = i;
+                    updateSelectionHandles();
+                }
                 isDraggingShape = true;
-                updateSelectionHandles();
                 foundShape = true;
                 break;
             }
         }
 
-        if (!foundShape)
+        if (!foundShape && selectedShapeIndex != -1) // Only update if deselecting
         {
             selectedShapeIndex = -1;
             updateSelectionHandles();
@@ -446,7 +466,6 @@ void MainComponent::mouseDown(const juce::MouseEvent& e)
         dragEnd = e.position;
     }
 }
-
 void MainComponent::mouseDrag(const juce::MouseEvent& e)
 {
     if (currentTool == Tool::Select)
@@ -834,4 +853,6 @@ void MainComponent::updateSelectionHandles()
     {
         selectionHandles.clear();
     }
+    
+    repaint();
 }
