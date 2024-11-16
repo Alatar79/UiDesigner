@@ -561,50 +561,7 @@ void MainComponent::mouseDown(const juce::MouseEvent& e)
                 
                 if (activeHandle == SelectionHandle::Type::Rotate)
                 {
-                    auto& shape = shapes.getReference(selectedShapeIndex);
-                    
-                    // Get the corners of the bounding rectangle
-                    auto topLeft = shape.bounds.getTopLeft();
-                    auto topRight = shape.bounds.getTopRight();
-                    auto bottomLeft = shape.bounds.getBottomLeft();
-                    auto bottomRight = shape.bounds.getBottomRight();
-                    
-                    // Rotate all corners around the current rotation center using the current rotation
-                    auto rotatePoint = [&shape](juce::Point<float> point) {
-                        return SelectionHandle::rotatePointAround(point, shape.rotationCenter, shape.rotation);
-                    };
-                    
-                    auto rotatedTopLeft = rotatePoint(topLeft);
-                    auto rotatedTopRight = rotatePoint(topRight);
-                    auto rotatedBottomLeft = rotatePoint(bottomLeft);
-                    auto rotatedBottomRight = rotatePoint(bottomRight);
-                    
-                    juce::Point<float> tempCenter = {
-                        (rotatedTopLeft.x + rotatedTopRight.x + rotatedBottomLeft.x + rotatedBottomRight.x) / 4.0f,
-                        (rotatedTopLeft.y + rotatedTopRight.y + rotatedBottomLeft.y + rotatedBottomRight.y) / 4.0f
-                    };
-                    
-                    auto rotatePointReverse = [&shape, tempCenter](juce::Point<float> point) {
-                        return SelectionHandle::rotatePointAround(point, tempCenter, -shape.rotation);
-                    };
-                    
-                    rotatedTopLeft = rotatePointReverse(rotatedTopLeft);
-                    rotatedTopRight = rotatePointReverse(rotatedTopRight);
-                    rotatedBottomLeft = rotatePointReverse(rotatedBottomLeft);
-                    rotatedBottomRight = rotatePointReverse(rotatedBottomRight);
-                    
-                    shape.bounds = juce::Rectangle<float>(rotatedTopLeft, rotatedBottomRight);
-                    
-                    // Calculate the center of the rotated rectangle
-                    shape.rotationCenter = {
-                        (rotatedTopLeft.x + rotatedTopRight.x + rotatedBottomLeft.x + rotatedBottomRight.x) / 4.0f,
-                        (rotatedTopLeft.y + rotatedTopRight.y + rotatedBottomLeft.y + rotatedBottomRight.y) / 4.0f
-                    };
-                    
-                    // Store initial angle for rotation
-                    initialAngle = std::atan2(e.position.y - shape.rotationCenter.y,
-                                             e.position.x - shape.rotationCenter.x);
-                    initialRotation = shape.rotation;
+                    prepareRotation(e, shapes.getReference(selectedShapeIndex));
                 }
                 return;
             }
@@ -685,13 +642,9 @@ void MainComponent::handleShapeManipulation(const juce::MouseEvent& e)
         if (isDraggingHandle)
         {
             if (activeHandle == SelectionHandle::Type::Rotate)
-            {
                 rotateShape(e);
-            }
             else
-            {
                 resizeShape(e);
-            }
         }
         else if (isDraggingShape)
         {
@@ -712,7 +665,7 @@ void MainComponent::rotateShape(const juce::MouseEvent& e)
     
     // Calculate current angle relative to the stored rotation center
     float currentAngle = std::atan2(e.position.y - shape.rotationCenter.y,
-                                   e.position.x - shape.rotationCenter.x);
+                                    e.position.x - shape.rotationCenter.x);
     
     // Update shape rotation
     shape.rotation = initialRotation + (currentAngle - initialAngle);
@@ -726,9 +679,8 @@ void MainComponent::resizeShape(const juce::MouseEvent& e)
     auto delta = e.position - lastMousePosition;
 
     // Transform the delta based on rotation
-    float angleInRadians = shape.rotation;
-    float cosAngle = std::cos(-angleInRadians);
-    float sinAngle = std::sin(-angleInRadians);
+    float cosAngle = std::cos(-shape.rotation);
+    float sinAngle = std::sin(-shape.rotation);
     
     // Rotate the delta vector to account for shape rotation
     float transformedDeltaX = delta.x * cosAngle - delta.y * sinAngle;
@@ -883,7 +835,6 @@ bool MainComponent::keyPressed(const juce::KeyPress& key, Component* /*originati
             repaint();
             return true;
         }
-
     }
     
     return false;
@@ -892,6 +843,53 @@ bool MainComponent::keyPressed(const juce::KeyPress& key, Component* /*originati
 bool MainComponent::keyStateChanged(bool isKeyDown, Component *originatingComponent)
 {
     return false; 
+}
+
+void MainComponent::prepareRotation(const juce::MouseEvent& e, MainComponent::Shape& shape)
+{
+    // Get the corners of the bounding rectangle
+    auto topLeft = shape.bounds.getTopLeft();
+    auto topRight = shape.bounds.getTopRight();
+    auto bottomLeft = shape.bounds.getBottomLeft();
+    auto bottomRight = shape.bounds.getBottomRight();
+    
+    // Rotate all corners around the current rotation center using the current rotation
+    auto rotatePoint = [&shape](juce::Point<float> point) {
+        return SelectionHandle::rotatePointAround(point, shape.rotationCenter, shape.rotation);
+    };
+    
+    auto rotatedTopLeft = rotatePoint(topLeft);
+    auto rotatedTopRight = rotatePoint(topRight);
+    auto rotatedBottomLeft = rotatePoint(bottomLeft);
+    auto rotatedBottomRight = rotatePoint(bottomRight);
+    
+    juce::Point<float> tempCenter = {
+        (rotatedTopLeft.x + rotatedTopRight.x + rotatedBottomLeft.x + rotatedBottomRight.x) / 4.0f,
+        (rotatedTopLeft.y + rotatedTopRight.y + rotatedBottomLeft.y + rotatedBottomRight.y) / 4.0f
+    };
+    
+    auto rotatePointReverse = [&shape, tempCenter](juce::Point<float> point) {
+        return SelectionHandle::rotatePointAround(point, tempCenter, -shape.rotation);
+    };
+    
+    rotatedTopLeft = rotatePointReverse(rotatedTopLeft);
+    rotatedTopRight = rotatePointReverse(rotatedTopRight);
+    rotatedBottomLeft = rotatePointReverse(rotatedBottomLeft);
+    rotatedBottomRight = rotatePointReverse(rotatedBottomRight);
+    
+    //Create new bounds from the back-rotated rectangle:
+    shape.bounds = juce::Rectangle<float>(rotatedTopLeft, rotatedBottomRight);
+    
+    // Calculate the center of the back-rotated rectangle
+    shape.rotationCenter = {
+        (rotatedTopLeft.x + rotatedTopRight.x + rotatedBottomLeft.x + rotatedBottomRight.x) / 4.0f,
+        (rotatedTopLeft.y + rotatedTopRight.y + rotatedBottomLeft.y + rotatedBottomRight.y) / 4.0f
+    };
+    
+    // Store initial angle for rotation
+    initialAngle = std::atan2(e.position.y - shape.rotationCenter.y,
+                             e.position.x - shape.rotationCenter.x);
+    initialRotation = shape.rotation;
 }
 
 void MainComponent::showColorPicker(bool isFillColor)

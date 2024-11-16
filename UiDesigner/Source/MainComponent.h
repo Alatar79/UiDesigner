@@ -134,8 +134,9 @@ public:
     bool keyStateChanged (bool isKeyDown, Component *originatingComponent) override;
 
 private:
+    
+    void prepareRotation(const juce::MouseEvent& e, Shape& shape);
     void showColorPicker(bool isFillColor);
-
     void applyStyle(juce::Graphics& g, const Style& style);
 
     template<typename PathFunction>
