@@ -207,7 +207,7 @@ public:
                                .contains(point);
                 case Tool::Line:
                 {
-                    float threshold = style.strokeWidth * 0.5f + 2.0f;
+                    float threshold = style.strokeWidth + 4.0f;
                     juce::Line<float> line(bounds.getTopLeft(), bounds.getBottomRight());
                     juce::Point<float> foundPoint;
                     return line.getDistanceFromPoint(point, foundPoint) < threshold;

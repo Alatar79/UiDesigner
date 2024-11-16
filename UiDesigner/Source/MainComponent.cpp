@@ -583,40 +583,52 @@ void MainComponent::rotateShape(const juce::MouseEvent& e)
 
 void MainComponent::resizeShape(const juce::MouseEvent& e)
 {
-    auto& shape = shapes.getReference(selectedShapeIndex);//shapes[selectedShapeIndex];
+    auto& shape = shapes.getReference(selectedShapeIndex);
     auto originalBounds = shape.bounds;
     auto delta = e.position - lastMousePosition;
+
+    // Transform the delta based on rotation
+    float angleInRadians = shape.rotation;
+    float cosAngle = std::cos(-angleInRadians);
+    float sinAngle = std::sin(-angleInRadians);
+    
+    // Rotate the delta vector to account for shape rotation
+    float transformedDeltaX = delta.x * cosAngle - delta.y * sinAngle;
+    float transformedDeltaY = delta.x * sinAngle + delta.y * cosAngle;
+    
+    // Create transformed delta
+    juce::Point<float> transformedDelta(transformedDeltaX, transformedDeltaY);
 
     // Handle resizing based on the active handle
     switch (activeHandle)
     {
         case SelectionHandle::Type::TopLeft:
-            shape.bounds.setTop(shape.bounds.getY() + delta.y);
-            shape.bounds.setLeft(shape.bounds.getX() + delta.x);
+            shape.bounds.setTop(shape.bounds.getY() + transformedDelta.y);
+            shape.bounds.setLeft(shape.bounds.getX() + transformedDelta.x);
             break;
         case SelectionHandle::Type::Top:
-            shape.bounds.setTop(shape.bounds.getY() + delta.y);
+            shape.bounds.setTop(shape.bounds.getY() + transformedDelta.y);
             break;
         case SelectionHandle::Type::TopRight:
-            shape.bounds.setTop(shape.bounds.getY() + delta.y);
-            shape.bounds.setRight(shape.bounds.getRight() + delta.x);
+            shape.bounds.setTop(shape.bounds.getY() + transformedDelta.y);
+            shape.bounds.setRight(shape.bounds.getRight() + transformedDelta.x);
             break;
         case SelectionHandle::Type::Right:
-            shape.bounds.setRight(shape.bounds.getRight() + delta.x);
+            shape.bounds.setRight(shape.bounds.getRight() + transformedDelta.x);
             break;
         case SelectionHandle::Type::BottomRight:
-            shape.bounds.setBottom(shape.bounds.getBottom() + delta.y);
-            shape.bounds.setRight(shape.bounds.getRight() + delta.x);
+            shape.bounds.setBottom(shape.bounds.getBottom() + transformedDelta.y);
+            shape.bounds.setRight(shape.bounds.getRight() + transformedDelta.x);
             break;
         case SelectionHandle::Type::Bottom:
-            shape.bounds.setBottom(shape.bounds.getBottom() + delta.y);
+            shape.bounds.setBottom(shape.bounds.getBottom() + transformedDelta.y);
             break;
         case SelectionHandle::Type::BottomLeft:
-            shape.bounds.setBottom(shape.bounds.getBottom() + delta.y);
-            shape.bounds.setLeft(shape.bounds.getX() + delta.x);
+            shape.bounds.setBottom(shape.bounds.getBottom() + transformedDelta.y);
+            shape.bounds.setLeft(shape.bounds.getX() + transformedDelta.x);
             break;
         case SelectionHandle::Type::Left:
-            shape.bounds.setLeft(shape.bounds.getX() + delta.x);
+            shape.bounds.setLeft(shape.bounds.getX() + transformedDelta.x);
             break;
         default:
             break;
@@ -672,6 +684,35 @@ bool MainComponent::keyPressed(const juce::KeyPress& key, Component* /*originati
             repaint();
             return true;
         }
+        // Add shift+arrow keys for bigger movements
+        else if (key.isKeyCode(juce::KeyPress::leftKey) && key.getModifiers().isShiftDown())
+        {
+            shape.move(-10.0f, 0.0f);
+            updateSelectionHandles();
+            repaint();
+            return true;
+        }
+        else if (key.isKeyCode(juce::KeyPress::rightKey) && key.getModifiers().isShiftDown())
+        {
+            shape.move(10.0f, 0.0f);
+            updateSelectionHandles();
+            repaint();
+            return true;
+        }
+        else if (key.isKeyCode(juce::KeyPress::upKey) && key.getModifiers().isShiftDown())
+        {
+            shape.move(0.0f, -10.0f);
+            updateSelectionHandles();
+            repaint();
+            return true;
+        }
+        else if (key.isKeyCode(juce::KeyPress::downKey) && key.getModifiers().isShiftDown())
+        {
+            shape.move(0.0f, 10.0f);
+            updateSelectionHandles();
+            repaint();
+            return true;
+        }
         else if (key.isKeyCode(juce::KeyPress::leftKey))
         {
             // Move left
@@ -704,35 +745,7 @@ bool MainComponent::keyPressed(const juce::KeyPress& key, Component* /*originati
             repaint();
             return true;
         }
-        // Add shift+arrow keys for bigger movements
-        else if (key.isKeyCode(juce::KeyPress::leftKey) && key.getModifiers().isShiftDown())
-        {
-            shape.move(-10.0f, 0.0f);
-            updateSelectionHandles();
-            repaint();
-            return true;
-        }
-        else if (key.isKeyCode(juce::KeyPress::rightKey) && key.getModifiers().isShiftDown())
-        {
-            shape.move(10.0f, 0.0f);
-            updateSelectionHandles();
-            repaint();
-            return true;
-        }
-        else if (key.isKeyCode(juce::KeyPress::upKey) && key.getModifiers().isShiftDown())
-        {
-            shape.move(0.0f, -10.0f);
-            updateSelectionHandles();
-            repaint();
-            return true;
-        }
-        else if (key.isKeyCode(juce::KeyPress::downKey) && key.getModifiers().isShiftDown())
-        {
-            shape.move(0.0f, 10.0f);
-            updateSelectionHandles();
-            repaint();
-            return true;
-        }
+
     }
     
     return false;
