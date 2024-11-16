@@ -667,19 +667,16 @@ void MainComponent::setFillEnabled(bool enabled)
     repaint();
 }
 
-void MainComponent::showColorPicker(bool isFillColor)
+void MainComponent::setFillColour(juce::Colour colour)
 {
-    currentlyEditingFillColour = isFillColor;
-    auto colourSelector = std::make_unique<juce::ColourSelector>(juce::ColourSelector::showColourspace);
-    colourSelector->setCurrentColour(isFillColor ? currentStyle.fillColour : currentStyle.strokeColour);
-    colourSelector->addChangeListener(this);
-    colourSelector->setSize(300, 400);
+    currentStyle.fillColour = colour;
+    repaint();
+}
 
-    juce::CallOutBox::launchAsynchronously(
-        std::move(colourSelector),
-        isFillColor ? toolWindow->getContentComponent()->findChildWithID("fillColorButton")->getBounds()
-                   : toolWindow->getContentComponent()->findChildWithID("strokeColorButton")->getBounds(),
-        toolWindow->getContentComponent());
+void MainComponent::setStrokeColour(juce::Colour colour)
+{
+    currentStyle.strokeColour = colour;
+    repaint();
 }
 
 void MainComponent::setStrokeWidth(float width)

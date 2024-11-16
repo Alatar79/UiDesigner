@@ -134,7 +134,8 @@ public:
     
     void setCurrentTool(Tool tool);
     void setFillEnabled(bool enabled);
-    void showColorPicker(bool isFillColor);
+    void setFillColour(juce::Colour colour);
+    void setStrokeColour(juce::Colour colour);
     void setStrokeWidth(float width);
     void setCornerRadius(float radius);
     void setStrokePattern(StrokePattern pattern);
@@ -176,6 +177,53 @@ private:
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(MainComponent)
 };
 
+class ColorPickerWindow : public juce::DocumentWindow, public juce::ChangeListener
+{
+public:
+    ColorPickerWindow(const juce::String& name, juce::Colour initialColor,
+                     std::function<void(juce::Colour)> colorCallback)
+        : DocumentWindow(name, juce::Colours::lightgrey,
+                        DocumentWindow::closeButton | DocumentWindow::minimiseButton)
+    {
+        colorSelector = std::make_unique<juce::ColourSelector>(
+            juce::ColourSelector::showColourspace |
+            juce::ColourSelector::showAlphaChannel |
+            juce::ColourSelector::showColourAtTop |
+            juce::ColourSelector::editableColour);
+        colorSelector->setCurrentColour(initialColor);
+        colorSelector->setSize(300, 400);
+        
+        colorSelector->addChangeListener(this);
+        this->colorCallback = std::move(colorCallback);
+        
+        setContentNonOwned(colorSelector.get(), true);
+        setUsingNativeTitleBar(true);
+        setResizable(true, false);
+        setAlwaysOnTop(true);
+        
+        centreWithSize(getWidth(), getHeight());
+        setVisible(true);
+        toFront(true);
+    }
+    
+    void closeButtonPressed() override
+    {
+        setVisible(false);
+        //delete this;
+    }
+    
+    void changeListenerCallback(juce::ChangeBroadcaster*) override
+    {
+        if (colorCallback)
+            colorCallback(colorSelector->getCurrentColour());
+    }
+    
+private:
+    std::unique_ptr<juce::ColourSelector> colorSelector;
+    std::function<void(juce::Colour)> colorCallback;
+    
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(ColorPickerWindow)
+};
 
 class ToolPanel : public juce::Component, public juce::Slider::Listener
 {
@@ -268,8 +316,8 @@ public:
         cornerRadiusLabel.attachToComponent(&cornerRadiusSlider, true);
         
         // Color buttons
-        fillColorButton.onClick = [this] { owner.showColorPicker(true); };
-        strokeColorButton.onClick = [this] { owner.showColorPicker(false); };
+        fillColorButton.onClick = [this] { showColorPicker(true); };
+        strokeColorButton.onClick = [this] { showColorPicker(false); };
         
         // Fill toggle
         fillToggle.setButtonText("Enable Fill");
@@ -283,6 +331,12 @@ public:
         dashDotStrokeButton.setRadioGroupId(1);
         
         solidStrokeButton.setToggleState(true, juce::dontSendNotification);
+    }
+    
+    ~ToolPanel()
+    {
+        // Make sure we clean up any open color picker windows
+        deleteColorPickers();
     }
 
     void resized() override
@@ -335,7 +389,98 @@ public:
     }
 
 private:
+    
+    void deleteColorPickers()
+    {
+        fillColorPicker = nullptr;
+        strokeColorPicker = nullptr;
+    }
+
+    /*
+    void showColorPicker(bool isFillColor)
+    {
+        juce::String windowTitle = isFillColor ? "Fill Color" : "Stroke Color";
+        juce::Colour initialColor = isFillColor ?
+            fillColorButton.findColour(juce::TextButton::buttonColourId) :
+            strokeColorButton.findColour(juce::TextButton::buttonColourId);
+            
+        auto* picker = new ColorPickerWindow(windowTitle, initialColor,
+            [this, isFillColor](juce::Colour newColour)
+            {
+                if (isFillColor)
+                {
+                    fillColorButton.setColour(juce::TextButton::buttonColourId, newColour);
+                    owner.setFillColour(newColour);
+                }
+                else
+                {
+                    strokeColorButton.setColour(juce::TextButton::buttonColourId, newColour);
+                    owner.setStrokeColour(newColour);
+                }
+            });
+            
+        // Position the color picker near the button that opened it
+        auto &button = isFillColor ? fillColorButton : strokeColorButton;
+        auto buttonPos = button.getBounds().getBottomLeft();
+        auto screenPos = button.localPointToGlobal(buttonPos);
+        picker->setTopLeftPosition(screenPos.x, screenPos.y);
+    }
+     */
+    
+    void showColorPicker(bool isFillColor)
+    {
+        // If there's already a picker of this type, just focus it instead of creating a new one
+        if (isFillColor && fillColorPicker != nullptr)
+        {
+            fillColorPicker->setVisible(true);
+            fillColorPicker->toFront(true);
+            return;
+        }
+        else if (!isFillColor && strokeColorPicker != nullptr)
+        {
+            strokeColorPicker->setVisible(true);
+            strokeColorPicker->toFront(true);
+            return;
+        }
+
+        juce::String windowTitle = isFillColor ? "Fill Color" : "Stroke Color";
+        juce::Colour initialColor = isFillColor ?
+            fillColorButton.findColour(juce::TextButton::buttonColourId) :
+            strokeColorButton.findColour(juce::TextButton::buttonColourId);
+            
+        auto& picker = isFillColor ? fillColorPicker : strokeColorPicker;
+        
+        picker = std::make_unique<ColorPickerWindow>(windowTitle, initialColor,
+            [this, isFillColor](juce::Colour newColour)
+            {
+                if (isFillColor)
+                {
+                    fillColorButton.setColour(juce::TextButton::buttonColourId, newColour);
+                    owner.setFillColour(newColour);
+                }
+                else
+                {
+                    strokeColorButton.setColour(juce::TextButton::buttonColourId, newColour);
+                    owner.setStrokeColour(newColour);
+                }
+            });
+
+        // Position the picker window relative to the button
+        auto &button = isFillColor ? fillColorButton : strokeColorButton;
+        auto buttonPos = button.getBounds().getTopRight();
+        auto screenPos = localPointToGlobal(buttonPos);
+        
+        // Offset it slightly so it doesn't cover the button
+        screenPos.addXY(10, 0);
+        
+        picker->setTopLeftPosition(screenPos.x, screenPos.y);
+    }
+    
     MainComponent& owner;
+    
+    // Keep track of our color picker windows
+    std::unique_ptr<ColorPickerWindow> fillColorPicker;
+    std::unique_ptr<ColorPickerWindow> strokeColorPicker;
     
     juce::TextButton selectButton;
     juce::TextButton rectangleButton;
