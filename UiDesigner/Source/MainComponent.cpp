@@ -149,6 +149,45 @@ bool SelectionHandle::hitTest(juce::Point<float> point) const
     return handleBounds.contains(point);
 }
 
+bool MainComponent::Shape::hitTest(juce::Point<float> point) const
+{
+    if (rotation != 0.0f)
+    {
+        // For rotated shapes, transform the test point back
+        point = SelectionHandle::rotatePointAround(point, bounds.getCentre(), -rotation);
+    }
+
+    switch (type)
+    {
+        case Tool::Rectangle:
+            return bounds.contains(point);
+        case Tool::Ellipse:
+            return bounds.reduced(style.strokeWidth * 0.5f)
+                       .contains(point);
+        case Tool::Line:
+        {
+            float threshold = style.strokeWidth + 4.0f;
+            juce::Line<float> line(bounds.getTopLeft(), bounds.getBottomRight());
+            juce::Point<float> foundPoint;
+            return line.getDistanceFromPoint(point, foundPoint) < threshold;
+        }
+            
+        default:
+            return false;
+    }
+}
+
+void MainComponent::Shape::initializeRotationCenter()
+{
+    rotationCenter = bounds.getCentre();
+}
+
+void MainComponent::Shape::move(float dx, float dy)
+{
+    bounds.translate(dx, dy);
+    rotationCenter.addXY(dx, dy);  // Move the rotation center with the shape
+}
+
 
 MainComponent::MainComponent()
 {
