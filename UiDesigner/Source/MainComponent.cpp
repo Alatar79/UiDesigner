@@ -244,13 +244,13 @@ void MainComponent::paint(juce::Graphics& g)
         });
     };
     
-    auto drawLine = [&](const juce::Point<float> start, const juce::Point<float> end, const Style style)
+    auto drawLine = [&](const juce::Rectangle<float>& bounds, const Style style)
     {
         drawStrokedPath(g, style, [&]()
         {
             juce::Path path;
-            path.startNewSubPath(start);
-            path.lineTo(end);
+            path.startNewSubPath(bounds.getTopLeft());
+            path.lineTo(bounds.getBottomRight());
             return path;
         });
     };
@@ -284,7 +284,7 @@ void MainComponent::paint(juce::Graphics& g)
             }
             case Tool::Line:
             {
-                drawLine(shape.startPoint, shape.endPoint, shape.style);
+                drawLine(shape.bounds, shape.style);
                 break;
             }
             default:
@@ -303,23 +303,22 @@ void MainComponent::paint(juce::Graphics& g)
     {
         applyStyle(g, currentStyle);
         
+        auto bounds = juce::Rectangle<float>(dragStart, dragEnd);
         switch (currentTool)
         {
             case Tool::Rectangle:
             {
-                auto bounds = juce::Rectangle<float>(dragStart, dragEnd);
                 drawRect(bounds, currentStyle);
                 break;
             }
             case Tool::Ellipse:
             {
-                auto bounds = juce::Rectangle<float>(dragStart, dragEnd);
                 drawEllipse(bounds, currentStyle);
                 break;
             }
             case Tool::Line:
             {
-                drawLine(dragStart, dragEnd, currentStyle);
+                drawLine(bounds, currentStyle);
                 break;
             }
             default:
@@ -529,27 +528,9 @@ void MainComponent::mouseUp(const juce::MouseEvent& e)
         Shape shape;
         shape.type = currentTool;
         shape.style = currentStyle;
+        shape.bounds = juce::Rectangle<float>(dragStart, dragEnd);
+        shape.initializeRotationCenter();
         
-        switch (currentTool)
-        {
-            case Tool::Rectangle:
-            case Tool::Ellipse:
-                shape.bounds = juce::Rectangle<float>(dragStart, dragEnd);
-                break;
-            case Tool::Line:
-                shape.startPoint = dragStart;
-                shape.endPoint = dragEnd;
-                shape.bounds = juce::Rectangle<float>(
-                    juce::Point<float>(juce::jmin(dragStart.x, dragEnd.x),
-                                     juce::jmin(dragStart.y, dragEnd.y)),
-                    juce::Point<float>(juce::jmax(dragStart.x, dragEnd.x),
-                                     juce::jmax(dragStart.y, dragEnd.y)));
-                break;
-            default:
-                break;
-        }
-        
-        shape.initializeRotationCenter();  // Add this line
         shapes.add(shape);
         repaint();
     }
@@ -639,19 +620,6 @@ void MainComponent::resizeShape(const juce::MouseEvent& e)
             break;
         default:
             break;
-    }
-
-    // Update line endpoints if it's a line
-    if (shape.type == Tool::Line)
-    {
-        // Calculate how the line endpoints should move based on the bounds changes
-        float scaleX = shape.bounds.getWidth() / originalBounds.getWidth();
-        float scaleY = shape.bounds.getHeight() / originalBounds.getHeight();
-        
-        shape.startPoint.x = shape.bounds.getX() + (shape.startPoint.x - originalBounds.getX()) * scaleX;
-        shape.startPoint.y = shape.bounds.getY() + (shape.startPoint.y - originalBounds.getY()) * scaleY;
-        shape.endPoint.x = shape.bounds.getX() + (shape.endPoint.x - originalBounds.getX()) * scaleX;
-        shape.endPoint.y = shape.bounds.getY() + (shape.endPoint.y - originalBounds.getY()) * scaleY;
     }
 
     updateSelectionHandles();

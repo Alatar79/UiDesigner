@@ -186,8 +186,6 @@ public:
     {
         Tool type;
         juce::Rectangle<float> bounds;
-        juce::Point<float> startPoint;
-        juce::Point<float> endPoint;
         Style style;
         float rotation = 0.0f;  // Add rotation angle
         juce::Point<float> rotationCenter;  // Add this line
@@ -210,10 +208,11 @@ public:
                 case Tool::Line:
                 {
                     float threshold = style.strokeWidth * 0.5f + 2.0f;
-                    juce::Line<float> line(startPoint, endPoint);
+                    juce::Line<float> line(bounds.getTopLeft(), bounds.getBottomRight());
                     juce::Point<float> foundPoint;
                     return line.getDistanceFromPoint(point, foundPoint) < threshold;
                 }
+                    
                 default:
                     return false;
             }
@@ -227,8 +226,6 @@ public:
         void move(float dx, float dy)
         {
             bounds.translate(dx, dy);
-            startPoint.addXY(dx, dy);
-            endPoint.addXY(dx, dy);
             rotationCenter.addXY(dx, dy);  // Move the rotation center with the shape
         }
     };
