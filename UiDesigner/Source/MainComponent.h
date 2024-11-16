@@ -67,9 +67,10 @@ private:
     juce::Rectangle<float> bounds_;  // Reference to the shape bounds
 };
 
+//Forward declaration
+class ToolWindow;
 
 class MainComponent : public juce::Component,
-                      public juce::Slider::Listener,
                       public juce::ChangeListener,
                       public juce::KeyListener
 {
@@ -114,7 +115,7 @@ public:
     };
 
     MainComponent();
-    
+    ~MainComponent() {}
 
     void paint(juce::Graphics& g) override;
      
@@ -125,45 +126,28 @@ public:
     void mouseDrag(const juce::MouseEvent& e) override;
 
     void mouseUp(const juce::MouseEvent& e) override;
-
-    void sliderValueChanged(juce::Slider* slider) override;
     
     void changeListenerCallback(juce::ChangeBroadcaster* source) override;
     
     bool keyPressed(const juce::KeyPress& key, Component *originatingComponent) override;
     bool keyStateChanged (bool isKeyDown, Component *originatingComponent) override;
-
+    
+    void setCurrentTool(Tool tool);
+    void setFillEnabled(bool enabled);
+    void showColorPicker(bool isFillColor);
+    void setStrokeWidth(float width);
+    void setCornerRadius(float radius);
+    void setStrokePattern(StrokePattern pattern);
+    
 private:
     
     void prepareRotation(const juce::MouseEvent& e, Shape& shape);
-    void showColorPicker(bool isFillColor);
     void applyStyle(juce::Graphics& g, const Style& style);
 
     template<typename PathFunction>
     void drawStrokedPath(juce::Graphics& g, const Style& style, PathFunction&& pathFunc);
 
-    // UI Components
-    juce::TextButton rectangleButton;
-    juce::TextButton ellipseButton;
-    juce::TextButton lineButton;
-    juce::TextButton selectButton;
-
-    juce::Slider strokeWidthSlider;
-    juce::Label strokeWidthLabel;
-    
-    juce::TextButton fillColorButton{ "Fill Color" };
-    juce::TextButton strokeColorButton{ "Stroke Color" };
-    juce::Label fillColorLabel;
-    juce::Label strokeColorLabel;
-    juce::Slider cornerRadiusSlider;
-    juce::Label cornerRadiusLabel;
-    
-    StrokePatternButton solidStrokeButton{ "Solid" };
-    StrokePatternButton dashedStrokeButton{ "Dashed" };
-    StrokePatternButton dottedStrokeButton{ "Dotted" };
-    StrokePatternButton dashDotStrokeButton{ "Dash-Dot" };
-    
-    juce::ToggleButton fillToggle;
+    std::unique_ptr<ToolWindow> toolWindow;
 
     // State
     Tool currentTool = Tool::Rectangle;
@@ -188,6 +172,230 @@ private:
     void handleShapeManipulation(const juce::MouseEvent& e);
     void rotateShape(const juce::MouseEvent& e);
     void resizeShape(const juce::MouseEvent& e);
-
+    
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(MainComponent)
-    };
+};
+
+
+class ToolPanel : public juce::Component, public juce::Slider::Listener
+{
+public:
+    ToolPanel(MainComponent& mainComponent) : owner(mainComponent)
+    {
+        // Move all tool-related components from MainComponent to here
+        addAndMakeVisible(selectButton);
+        addAndMakeVisible(rectangleButton);
+        addAndMakeVisible(ellipseButton);
+        addAndMakeVisible(lineButton);
+        
+        selectButton.setButtonText("Select");
+        rectangleButton.setButtonText("Rectangle");
+        ellipseButton.setButtonText("Ellipse");
+        lineButton.setButtonText("Line");
+        
+        selectButton.onClick = [this]
+        {
+            owner.setCurrentTool(MainComponent::Tool::Select);
+        };
+        rectangleButton.onClick = [this]
+        {
+            owner.setCurrentTool(MainComponent::Tool::Rectangle);
+        };
+        ellipseButton.onClick = [this]
+        {
+            owner.setCurrentTool(MainComponent::Tool::Ellipse);
+        };
+        lineButton.onClick = [this]
+        {
+            owner.setCurrentTool(MainComponent::Tool::Line);
+        };
+
+        // Move all other controls (stroke width, colors, etc.)
+        addAndMakeVisible(strokeWidthSlider);
+        addAndMakeVisible(strokeWidthLabel);
+        addAndMakeVisible(cornerRadiusSlider);
+        addAndMakeVisible(cornerRadiusLabel);
+        addAndMakeVisible(fillColorButton);
+        addAndMakeVisible(strokeColorButton);
+        addAndMakeVisible(fillColorLabel);
+        addAndMakeVisible(strokeColorLabel);
+        addAndMakeVisible(fillToggle);
+        addAndMakeVisible(solidStrokeButton);
+        addAndMakeVisible(dashedStrokeButton);
+        addAndMakeVisible(dottedStrokeButton);
+        addAndMakeVisible(dashDotStrokeButton);
+        
+        fillColorButton.setComponentID("fillColorButton");
+        strokeColorButton.setComponentID("strokeColorButton");
+        
+        // Set up slider listeners
+        strokeWidthSlider.addListener(this);
+        cornerRadiusSlider.addListener(this);
+        
+        // Set up stroke pattern buttons
+        solidStrokeButton.onClick = [this]
+        {
+            owner.setStrokePattern(MainComponent::StrokePattern::Solid);
+        };
+        dashedStrokeButton.onClick = [this]
+        {
+            owner.setStrokePattern(MainComponent::StrokePattern::Dashed);
+        };
+        dottedStrokeButton.onClick = [this]
+        {
+            owner.setStrokePattern(MainComponent::StrokePattern::Dotted);
+        };
+        dashDotStrokeButton.onClick = [this]
+        {
+            owner.setStrokePattern(MainComponent::StrokePattern::DashDot);
+        };
+
+
+        // Set up slider properties
+        strokeWidthSlider.setRange(1.0, 20.0, 1.0);
+        strokeWidthSlider.setValue(2.0);
+        //strokeWidthSlider.addListener(&owner);
+        
+        cornerRadiusSlider.setRange(0.0, 50.0, 1.0);
+        cornerRadiusSlider.setValue(0.0);
+        //cornerRadiusSlider.addListener(&owner);
+        
+        // Labels
+        strokeWidthLabel.setText("Stroke Width:", juce::dontSendNotification);
+        strokeWidthLabel.attachToComponent(&strokeWidthSlider, true);
+        
+        cornerRadiusLabel.setText("Corner Radius:", juce::dontSendNotification);
+        cornerRadiusLabel.attachToComponent(&cornerRadiusSlider, true);
+        
+        // Color buttons
+        fillColorButton.onClick = [this] { owner.showColorPicker(true); };
+        strokeColorButton.onClick = [this] { owner.showColorPicker(false); };
+        
+        // Fill toggle
+        fillToggle.setButtonText("Enable Fill");
+        fillToggle.setToggleState(true, juce::dontSendNotification);
+        fillToggle.onClick = [this] { owner.setFillEnabled(fillToggle.getToggleState()); };
+
+        // Stroke pattern buttons setup
+        solidStrokeButton.setRadioGroupId(1);
+        dashedStrokeButton.setRadioGroupId(1);
+        dottedStrokeButton.setRadioGroupId(1);
+        dashDotStrokeButton.setRadioGroupId(1);
+        
+        solidStrokeButton.setToggleState(true, juce::dontSendNotification);
+    }
+
+    void resized() override
+    {
+        // Move the layout code from MainComponent::resized() to here
+        auto padding = 10;
+        auto buttonWidth = 100;
+        auto buttonHeight = 30;
+        auto colorButtonWidth = 60;
+        auto strokePatternWidth = 40;
+        auto y = padding;
+        
+        // Tool buttons
+        selectButton.setBounds(padding, y, buttonWidth, buttonHeight);
+        rectangleButton.setBounds(padding, y + buttonHeight + padding, buttonWidth, buttonHeight);
+        ellipseButton.setBounds(padding, y + (buttonHeight + padding) * 2, buttonWidth, buttonHeight);
+        lineButton.setBounds(padding, y + (buttonHeight + padding) * 3, buttonWidth, buttonHeight);
+        
+        y = y + (buttonHeight + padding) * 4;
+        
+        // Style controls
+        auto labelWidth = 80;
+        strokeWidthSlider.setBounds(padding + labelWidth, y, 200, buttonHeight);
+        
+        y += buttonHeight + padding;
+        cornerRadiusSlider.setBounds(padding + labelWidth, y, 200, buttonHeight);
+        
+        y += buttonHeight + padding;
+        fillColorButton.setBounds(padding + labelWidth, y, colorButtonWidth, buttonHeight);
+        fillColorLabel.setBounds(padding, y, labelWidth, buttonHeight);
+        fillToggle.setBounds(padding + labelWidth + colorButtonWidth + padding, y, buttonWidth, buttonHeight);
+        
+        y += buttonHeight + padding;
+        strokeColorButton.setBounds(padding + labelWidth, y, colorButtonWidth, buttonHeight);
+        strokeColorLabel.setBounds(padding, y, labelWidth, buttonHeight);
+        
+        y += buttonHeight + padding;
+        solidStrokeButton.setBounds(padding, y, strokePatternWidth, buttonHeight);
+        dashedStrokeButton.setBounds(padding * 2 + strokePatternWidth, y, strokePatternWidth, buttonHeight);
+        dottedStrokeButton.setBounds(padding * 3 + strokePatternWidth * 2, y, strokePatternWidth, buttonHeight);
+        dashDotStrokeButton.setBounds(padding * 4 + strokePatternWidth * 3, y, strokePatternWidth, buttonHeight);
+    }
+    
+    void sliderValueChanged(juce::Slider* slider) override
+    {
+        if (slider == &strokeWidthSlider)
+            owner.setStrokeWidth((float)slider->getValue());
+        else if (slider == &cornerRadiusSlider)
+            owner.setCornerRadius((float)slider->getValue());
+    }
+
+private:
+    MainComponent& owner;
+    
+    juce::TextButton selectButton;
+    juce::TextButton rectangleButton;
+    juce::TextButton ellipseButton;
+    juce::TextButton lineButton;
+    
+    juce::Slider strokeWidthSlider;
+    juce::Label strokeWidthLabel;
+    juce::Slider cornerRadiusSlider;
+    juce::Label cornerRadiusLabel;
+    
+    juce::TextButton fillColorButton{ "Fill Color" };
+    juce::TextButton strokeColorButton{ "Stroke Color" };
+    juce::Label fillColorLabel;
+    juce::Label strokeColorLabel;
+    
+    StrokePatternButton solidStrokeButton{ "Solid" };
+    StrokePatternButton dashedStrokeButton{ "Dashed" };
+    StrokePatternButton dottedStrokeButton{ "Dotted" };
+    StrokePatternButton dashDotStrokeButton{ "Dash-Dot" };
+    
+    juce::ToggleButton fillToggle;
+    
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(ToolPanel)
+};
+
+class ToolWindow : public juce::DocumentWindow
+{
+public:
+    ToolWindow(MainComponent& mainComponent)
+        : DocumentWindow("Tools", juce::Colours::lightgrey,
+                        DocumentWindow::closeButton | DocumentWindow::minimiseButton)
+    {
+        toolPanel = std::make_unique<ToolPanel>(mainComponent);
+        
+        const int width = 600;
+        const int height = 600;
+        
+        // Give the tool panel an initial size before setting it as content
+        toolPanel->setSize(width, height);
+        
+        // Use setContentNonOwned since we're managing ownership with unique_ptr
+        setContentNonOwned(toolPanel.get(), true);
+        
+        setUsingNativeTitleBar(true);
+        setResizable(true, false);
+        centreWithSize(width, height);
+        setVisible(true);
+        //Need to make the process the foreground, otherwise the tooltip window wont show up initially, on Mac at least.
+        juce::Process::makeForegroundProcess();
+        toFront(true);  // Bring window to front when created
+    }
+
+    void closeButtonPressed() override
+    {
+        // Just hide the window when the user clicks the close button
+        setVisible(false);
+    }
+
+private:
+    std::unique_ptr<ToolPanel> toolPanel;
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(ToolWindow)
+};
