@@ -260,16 +260,14 @@ void MainComponent::paint(juce::Graphics& g)
     {
         applyStyle(g, shape.style);
         
-        // Save current transform
-        juce::AffineTransform transform;
         if (shape.rotation != 0.0f)
         {
             // Apply rotation transform
             g.saveState();
             g.addTransform(juce::AffineTransform::rotation(
                 shape.rotation,
-                shape.bounds.getCentreX(),
-                shape.bounds.getCentreY()));
+                shape.rotationCenter.x,  // Use stored rotation center
+                shape.rotationCenter.y));
         }
         
         switch (shape.type)
@@ -344,18 +342,18 @@ void MainComponent::paint(juce::Graphics& g)
             path.addRectangle(selectedShape.bounds);
             g.addTransform(juce::AffineTransform::rotation(
                 selectedShape.rotation,
-                selectedShape.bounds.getCentreX(),
-                selectedShape.bounds.getCentreY()));
-            g.strokePath(path, juce::PathStrokeType(1.0f, juce::PathStrokeType::mitered));
+                selectedShape.rotationCenter.x,
+                selectedShape.rotationCenter.y));
+            g.strokePath(path, juce::PathStrokeType(4.0f, juce::PathStrokeType::mitered));
             g.addTransform(juce::AffineTransform::rotation(
                 -selectedShape.rotation,
-                selectedShape.bounds.getCentreX(),
-                selectedShape.bounds.getCentreY()));
+                selectedShape.rotationCenter.x,
+                selectedShape.rotationCenter.y));
         }
         else
         {
             // For non-rotated shapes, just draw the bounds
-            g.drawRect(selectedShape.bounds, 1.0f);
+            g.drawRect(selectedShape.bounds, 2.0f);
         }
 
         // Draw selection handles
@@ -425,11 +423,49 @@ void MainComponent::mouseDown(const juce::MouseEvent& e)
                 
                 if (activeHandle == SelectionHandle::Type::Rotate)
                 {
-                    // Store initial angle for rotation
                     auto& shape = shapes.getReference(selectedShapeIndex);
-                    auto center = shape.bounds.getCentre();
-                    initialAngle = std::atan2(e.position.y - center.y,
-                                            e.position.x - center.x);
+                    
+                    // Get the corners of the bounding rectangle
+                    auto topLeft = shape.bounds.getTopLeft();
+                    auto topRight = shape.bounds.getTopRight();
+                    auto bottomLeft = shape.bounds.getBottomLeft();
+                    auto bottomRight = shape.bounds.getBottomRight();
+                    
+                    // Rotate all corners around the current rotation center using the current rotation
+                    auto rotatePoint = [&shape](juce::Point<float> point) {
+                        return SelectionHandle::rotatePointAround(point, shape.rotationCenter, shape.rotation);
+                    };
+                    
+                    auto rotatedTopLeft = rotatePoint(topLeft);
+                    auto rotatedTopRight = rotatePoint(topRight);
+                    auto rotatedBottomLeft = rotatePoint(bottomLeft);
+                    auto rotatedBottomRight = rotatePoint(bottomRight);
+                    
+                    juce::Point<float> tempCenter = {
+                        (rotatedTopLeft.x + rotatedTopRight.x + rotatedBottomLeft.x + rotatedBottomRight.x) / 4.0f,
+                        (rotatedTopLeft.y + rotatedTopRight.y + rotatedBottomLeft.y + rotatedBottomRight.y) / 4.0f
+                    };
+                    
+                    auto rotatePointReverse = [&shape, tempCenter](juce::Point<float> point) {
+                        return SelectionHandle::rotatePointAround(point, tempCenter, -shape.rotation);
+                    };
+                    
+                    rotatedTopLeft = rotatePointReverse(rotatedTopLeft);
+                    rotatedTopRight = rotatePointReverse(rotatedTopRight);
+                    rotatedBottomLeft = rotatePointReverse(rotatedBottomLeft);
+                    rotatedBottomRight = rotatePointReverse(rotatedBottomRight);
+                    
+                    shape.bounds = juce::Rectangle<float>(rotatedTopLeft, rotatedBottomRight);
+                    
+                    // Calculate the center of the rotated rectangle
+                    shape.rotationCenter = {
+                        (rotatedTopLeft.x + rotatedTopRight.x + rotatedBottomLeft.x + rotatedBottomRight.x) / 4.0f,
+                        (rotatedTopLeft.y + rotatedTopRight.y + rotatedBottomLeft.y + rotatedBottomRight.y) / 4.0f
+                    };
+                    
+                    // Store initial angle for rotation
+                    initialAngle = std::atan2(e.position.y - shape.rotationCenter.y,
+                                             e.position.x - shape.rotationCenter.x);
                     initialRotation = shape.rotation;
                 }
                 return;
@@ -488,7 +524,6 @@ void MainComponent::mouseUp(const juce::MouseEvent& e)
     }
     else if (isDrawing)
     {
-        // Existing shape creation code
         isDrawing = false;
         
         Shape shape;
@@ -514,6 +549,7 @@ void MainComponent::mouseUp(const juce::MouseEvent& e)
                 break;
         }
         
+        shape.initializeRotationCenter();  // Add this line
         shapes.add(shape);
         repaint();
     }
@@ -552,12 +588,11 @@ void MainComponent::handleShapeManipulation(const juce::MouseEvent& e)
 
 void MainComponent::rotateShape(const juce::MouseEvent& e)
 {
-    auto& shape = shapes.getReference(selectedShapeIndex);//shapes[selectedShapeIndex];
-    auto center = shape.bounds.getCentre();
+    auto& shape = shapes.getReference(selectedShapeIndex);
     
-    // Calculate current angle
-    float currentAngle = std::atan2(e.position.y - center.y,
-                                   e.position.x - center.x);
+    // Calculate current angle relative to the stored rotation center
+    float currentAngle = std::atan2(e.position.y - shape.rotationCenter.y,
+                                   e.position.x - shape.rotationCenter.x);
     
     // Update shape rotation
     shape.rotation = initialRotation + (currentAngle - initialAngle);
@@ -847,7 +882,7 @@ void MainComponent::updateSelectionHandles()
 
         // Update handle positions
         for (auto& handle : selectionHandles)
-            handle.updatePosition(shape.bounds, shape.rotation);
+            handle.updatePosition(shape.bounds, shape.rotation, shape.rotationCenter);
     }
     else
     {

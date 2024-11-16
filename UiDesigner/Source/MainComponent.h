@@ -83,7 +83,7 @@ public:
         );
     }
     
-    void updatePosition(const juce::Rectangle<float>& bounds, float rotationAngle)
+    void updatePosition(const juce::Rectangle<float>& bounds, float rotationAngle, const juce::Point<float>& rotationCenter)
     {
         const float handleSize = 8.0f;
         const float rotateHandleOffset = 20.0f;
@@ -111,8 +111,7 @@ public:
         // If there's rotation, rotate the handle position around the bounds center
         if (rotationAngle != 0.0f && handleType != Type::Rotate)
         {
-            auto center = bounds.getCentre();
-            auto rotated = rotatePointAround(position, center, rotationAngle);
+            auto rotated = rotatePointAround(position, rotationCenter, rotationAngle);
             handleBounds = juce::Rectangle<float>(handleSize, handleSize).withCentre(rotated);
         }
     }
@@ -191,6 +190,7 @@ public:
         juce::Point<float> endPoint;
         Style style;
         float rotation = 0.0f;  // Add rotation angle
+        juce::Point<float> rotationCenter;  // Add this line
         
         bool hitTest(juce::Point<float> point) const
         {
@@ -219,11 +219,17 @@ public:
             }
         }
 
+        void initializeRotationCenter()
+        {
+            rotationCenter = bounds.getCentre();
+        }
+
         void move(float dx, float dy)
         {
             bounds.translate(dx, dy);
             startPoint.addXY(dx, dy);
             endPoint.addXY(dx, dy);
+            rotationCenter.addXY(dx, dy);  // Move the rotation center with the shape
         }
     };
 
