@@ -50,6 +50,106 @@ void StrokePatternButton::paintButton(juce::Graphics& g, bool isMouseOver, bool 
     g.strokePath(path, strokeType);
 }
 
+
+SelectionHandle::SelectionHandle()
+{
+    handleType = Type::TopLeft;
+}
+
+SelectionHandle::SelectionHandle(Type type)
+{
+    handleType = type;
+}
+
+SelectionHandle::SelectionHandle(const SelectionHandle& other)
+    : handleType(other.handleType)
+    , position(other.position)
+    , handleBounds(other.handleBounds)
+    , bounds_(other.bounds_)
+{
+}
+
+SelectionHandle& SelectionHandle::operator=(const SelectionHandle& other)
+{
+    if (this != &other)
+    {
+        handleType = other.handleType;
+        position = other.position;
+        handleBounds = other.handleBounds;
+        bounds_ = other.bounds_;
+    }
+    return *this;
+}
+
+juce::Point<float> SelectionHandle::rotatePointAround(juce::Point<float> point,
+                                            juce::Point<float> center,
+                                            float angleInRadians)
+{
+    float dx = point.x - center.x;
+    float dy = point.y - center.y;
+    
+    return juce::Point<float>(
+        center.x + (dx * std::cos(angleInRadians) - dy * std::sin(angleInRadians)),
+        center.y + (dx * std::sin(angleInRadians) + dy * std::cos(angleInRadians))
+    );
+}
+
+void SelectionHandle::updatePosition(const juce::Rectangle<float>& bounds, float rotationAngle, const juce::Point<float>& rotationCenter)
+{
+    const float handleSize = 8.0f;
+    const float rotateHandleOffset = 20.0f;
+    bounds_ = bounds;
+    
+    // Calculate handle position based on type
+    switch (handleType)
+    {
+        case Type::TopLeft:     position = bounds.getTopLeft(); break;
+        case Type::Top:         position = bounds.getCentre().withY(bounds.getY()); break;
+        case Type::TopRight:    position = bounds.getTopRight(); break;
+        case Type::Right:       position = bounds.getCentre().withX(bounds.getRight()); break;
+        case Type::BottomRight: position = bounds.getBottomRight(); break;
+        case Type::Bottom:      position = bounds.getCentre().withY(bounds.getBottom()); break;
+        case Type::BottomLeft:  position = bounds.getBottomLeft(); break;
+        case Type::Left:        position = bounds.getCentre().withX(bounds.getX()); break;
+        case Type::Rotate:
+            position = bounds.getCentre().withY(bounds.getY() - rotateHandleOffset);
+            break;
+    }
+
+    // Create handle bounds centered on position
+    handleBounds = juce::Rectangle<float>(handleSize, handleSize).withCentre(position);
+
+    // If there's rotation, rotate the handle position around the bounds center
+    if (rotationAngle != 0.0f && handleType != Type::Rotate)
+    {
+        auto rotated = rotatePointAround(position, rotationCenter, rotationAngle);
+        handleBounds = juce::Rectangle<float>(handleSize, handleSize).withCentre(rotated);
+    }
+}
+
+void SelectionHandle::paint(juce::Graphics& g)
+{
+    g.setColour(juce::Colours::white);
+    g.fillRect(handleBounds);
+    g.setColour(juce::Colours::black);
+    g.drawRect(handleBounds);
+
+    if (handleType == Type::Rotate)
+    {
+        // Draw a circular handle for rotation
+        g.drawEllipse(handleBounds.toFloat(), 1.0f);
+        // Draw line connecting to the shape
+        g.drawLine(handleBounds.getCentreX(), handleBounds.getBottom(),
+                  handleBounds.getCentreX(), bounds_.getY());
+    }
+}
+
+bool SelectionHandle::hitTest(juce::Point<float> point) const
+{
+    return handleBounds.contains(point);
+}
+
+
 MainComponent::MainComponent()
 {
     setName("MainComponent");
@@ -584,7 +684,6 @@ void MainComponent::rotateShape(const juce::MouseEvent& e)
 void MainComponent::resizeShape(const juce::MouseEvent& e)
 {
     auto& shape = shapes.getReference(selectedShapeIndex);
-    auto originalBounds = shape.bounds;
     auto delta = e.position - lastMousePosition;
 
     // Transform the delta based on rotation
