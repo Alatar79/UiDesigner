@@ -199,7 +199,7 @@ MainComponent::MainComponent()
     // Set initial style
     currentStyle.fillColour = juce::Colours::blue.withAlpha(0.5f);
     currentStyle.strokeColour = juce::Colours::black;
-    currentStyle.strokeWidth = 2.0f;
+    currentStyle.strokeWidth = 0.0f;
     currentStyle.strokePattern = StrokePattern::Solid;
     currentStyle.hasFill = true;
 
@@ -224,32 +224,43 @@ void MainComponent::paint(juce::Graphics& g)
                 g.fillRect(bounds);
         }
         
-        drawStrokedPath(g, style, [&]()
+        if (style.strokeWidth > 0.0f)
         {
-            juce::Path path;
-            if (style.cornerRadius > 0.0f)
-                path.addRoundedRectangle(bounds, style.cornerRadius);
-            else
-                path.addRectangle(bounds);
-            return path;
-        });
+            drawStrokedPath(g, style, [&]()
+                            {
+                juce::Path path;
+                if (style.cornerRadius > 0.0f)
+                    path.addRoundedRectangle(bounds, style.cornerRadius);
+                else
+                    path.addRectangle(bounds);
+                return path;
+            });
+        }
     };
     
     auto drawEllipse = [&](const juce::Rectangle<float>& bounds, const Style& style)
     {
         if (style.hasFill)
             g.fillEllipse(bounds);
-        drawStrokedPath(g, style, [&]()
+        
+        if (style.strokeWidth > 0.0f)
         {
-            juce::Path path;
-            path.addEllipse(bounds);
-            return path;
-        });
+            drawStrokedPath(g, style, [&]()
+                            {
+                juce::Path path;
+                path.addEllipse(bounds);
+                return path;
+            });
+        }
     };
     
     auto drawLine = [&](const juce::Rectangle<float>& bounds, const Style style)
     {
-        drawStrokedPath(g, style, [&]()
+        // For lines, ensure minimum stroke width of 1
+        Style lineStyle = style;
+        lineStyle.strokeWidth = std::max(1.0f, style.strokeWidth);
+        
+        drawStrokedPath(g, lineStyle, [&]()
         {
             juce::Path path;
             path.startNewSubPath(bounds.getTopLeft());
@@ -659,6 +670,11 @@ bool MainComponent::keyStateChanged(bool isKeyDown, Component *originatingCompon
 void MainComponent::setCurrentTool(Tool tool)
 {
     currentTool = tool;
+    
+    // For lines, ensure minimum stroke width of 1
+    //if (tool == Tool::Line)
+    //    currentStyle.strokeWidth = std::max(1.0f, currentStyle.strokeWidth);
+
 }
 
 void MainComponent::setFillEnabled(bool enabled)
@@ -681,6 +697,9 @@ void MainComponent::setStrokeColour(juce::Colour colour)
 
 void MainComponent::setStrokeWidth(float width)
 {
+    //if (currentTool == Tool::Line)
+    //    width = std::max(1.0f, width);
+    
     currentStyle.strokeWidth = width;
     repaint();
 }

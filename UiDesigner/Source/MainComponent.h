@@ -300,8 +300,8 @@ public:
 
 
         // Set up slider properties
-        strokeWidthSlider.setRange(1.0, 20.0, 1.0);
-        strokeWidthSlider.setValue(2.0);
+        strokeWidthSlider.setRange(0.0, 20.0, 1.0);
+        strokeWidthSlider.setValue(0.0);
         //strokeWidthSlider.addListener(&owner);
         
         cornerRadiusSlider.setRange(0.0, 50.0, 1.0);
