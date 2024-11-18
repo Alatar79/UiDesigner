@@ -146,7 +146,8 @@ void SelectionHandle::paint(juce::Graphics& g)
 
 bool SelectionHandle::hitTest(juce::Point<float> point) const
 {
-    return handleBounds.contains(point);
+    const float handleHitThreshold = 1.0f;
+    return handleBounds.expanded(handleHitThreshold).contains(point);
 }
 
 bool MainComponent::Shape::hitTest(juce::Point<float> point) const
