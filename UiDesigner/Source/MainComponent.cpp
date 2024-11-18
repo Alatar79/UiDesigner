@@ -211,6 +211,13 @@ MainComponent::MainComponent()
     // Create the tool window
     toolWindow = std::make_unique<ToolWindow>(*this);
     
+    addAndMakeVisible(showToolsButton);
+    showToolsButton.setButtonText("Show Tools");
+    showToolsButton.onClick = [this]
+    {
+        showTools();
+    };
+    
     // Set initial style
     currentStyle.fillColour = juce::Colours::blue.withAlpha(0.5f);
     currentStyle.strokeColour = juce::Colours::black;
@@ -396,10 +403,24 @@ void MainComponent::paint(juce::Graphics& g)
  
 void MainComponent::resized()
 {
+    
+    // Position the button in the top-right corner
+    const int buttonWidth = 100;
+    const int buttonHeight = 30;
+    const int padding = 10;
+    
+    showToolsButton.setBounds(getWidth() - buttonWidth - padding,
+                             padding,
+                             buttonWidth,
+                             buttonHeight);
+    
 }
 
 void MainComponent::mouseDown(const juce::MouseEvent& e)
 {
+    if (e.getMouseDownX() < showToolsButton.getBottom() + 10)
+        return;
+    
     lastMousePosition = e.position;
 
     if (currentTool == Tool::Select)
@@ -766,6 +787,15 @@ void MainComponent::setStrokePattern(StrokePattern pattern)
 {
     currentStyle.strokePattern = pattern;
     repaint();
+}
+
+void MainComponent::showTools()
+{
+    if (toolWindow != nullptr)
+    {
+        toolWindow->setVisible(true);
+        toolWindow->toFront(true);
+    }
 }
 
 void MainComponent::prepareRotation(const juce::MouseEvent& e, MainComponent::Shape& shape)

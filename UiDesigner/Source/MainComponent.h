@@ -144,6 +144,7 @@ public:
     
 private:
     
+    void showTools();
     void prepareRotation(const juce::MouseEvent& e, Shape& shape);
     void applyStyle(juce::Graphics& g, const Style& style);
 
@@ -151,7 +152,8 @@ private:
     void drawStrokedPath(juce::Graphics& g, const Style& style, PathFunction&& pathFunc);
 
     std::unique_ptr<ToolWindow> toolWindow;
-
+    juce::TextButton showToolsButton;
+    
     // State
     Tool currentTool = Tool::Rectangle;
     Style currentStyle;
