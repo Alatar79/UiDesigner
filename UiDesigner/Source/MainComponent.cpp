@@ -418,7 +418,7 @@ void MainComponent::resized()
 
 void MainComponent::mouseDown(const juce::MouseEvent& e)
 {
-    if (e.getMouseDownX() < showToolsButton.getBottom() + 10)
+    if (e.getMouseDownY() < showToolsButton.getBottom() + 10)
         return;
     
     lastMousePosition = e.position;
