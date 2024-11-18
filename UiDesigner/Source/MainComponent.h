@@ -142,11 +142,19 @@ public:
     void setCornerRadius(float radius);
     void setStrokePattern(StrokePattern pattern);
     
+    void updateSelectedShapeFill(bool enabled);
+    void updateSelectedShapeFillColour(juce::Colour colour);
+    void updateSelectedShapeStrokeColour(juce::Colour colour);
+    void updateSelectedShapeStrokeWidth(float width);
+    void updateSelectedShapeCornerRadius(float radius);
+    void updateSelectedShapeStrokePattern(StrokePattern pattern);
+        
     const Shape* getSelectedShape() const;
     void updateSelectedShapeBounds(const juce::Rectangle<float>& newBounds);
     
 private:
     
+    void updateToolPanelFromShape(const Shape* shape);
     void drawDimensionLabel(juce::Graphics& g, const Shape& shape);
     void showTools();
     void prepareRotation(const juce::MouseEvent& e, Shape& shape);
@@ -233,7 +241,7 @@ private:
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(ColorPickerWindow)
 };
 
-class ToolPanel : public juce::Component, public juce::Slider::Listener
+class ToolPanel : public juce::Component
 {
 public:
     ToolPanel(MainComponent& mainComponent) : owner(mainComponent)
@@ -285,25 +293,41 @@ public:
         strokeColorButton.setComponentID("strokeColorButton");
         
         // Set up slider listeners
-        strokeWidthSlider.addListener(this);
-        cornerRadiusSlider.addListener(this);
+        strokeWidthSlider.onValueChange = [this]
+        {
+            if (!updatingFromShape)
+                owner.updateSelectedShapeStrokeWidth((float)strokeWidthSlider.getValue());
+        };
+
+        cornerRadiusSlider.onValueChange = [this]
+        {
+            if (!updatingFromShape)
+                owner.updateSelectedShapeCornerRadius((float)cornerRadiusSlider.getValue());
+        };
         
-        // Set up stroke pattern buttons
+        // stroke pattern button callbacks:
         solidStrokeButton.onClick = [this]
         {
-            owner.setStrokePattern(MainComponent::StrokePattern::Solid);
+            if (!updatingFromShape)
+                owner.updateSelectedShapeStrokePattern(MainComponent::StrokePattern::Solid);
         };
+
         dashedStrokeButton.onClick = [this]
         {
-            owner.setStrokePattern(MainComponent::StrokePattern::Dashed);
+            if (!updatingFromShape)
+                owner.updateSelectedShapeStrokePattern(MainComponent::StrokePattern::Dashed);
         };
+
         dottedStrokeButton.onClick = [this]
         {
-            owner.setStrokePattern(MainComponent::StrokePattern::Dotted);
+            if (!updatingFromShape)
+                owner.updateSelectedShapeStrokePattern(MainComponent::StrokePattern::Dotted);
         };
+
         dashDotStrokeButton.onClick = [this]
         {
-            owner.setStrokePattern(MainComponent::StrokePattern::DashDot);
+            if (!updatingFromShape)
+                owner.updateSelectedShapeStrokePattern(MainComponent::StrokePattern::DashDot);
         };
 
 
@@ -324,13 +348,23 @@ public:
         cornerRadiusLabel.attachToComponent(&cornerRadiusSlider, true);
         
         // Color buttons
-        fillColorButton.onClick = [this] { showColorPicker(true); };
-        strokeColorButton.onClick = [this] { showColorPicker(false); };
+        fillColorButton.onClick = [this]
+        {
+            showColorPicker(true);
+        };
+        strokeColorButton.onClick = [this]
+        {
+            showColorPicker(false);
+        };
         
         // Fill toggle
         fillToggle.setButtonText("Enable Fill");
         fillToggle.setToggleState(true, juce::dontSendNotification);
-        fillToggle.onClick = [this] { owner.setFillEnabled(fillToggle.getToggleState()); };
+        fillToggle.onClick = [this]
+        {
+            if (!updatingFromShape)
+                owner.updateSelectedShapeFill(fillToggle.getToggleState());
+        };
 
         // Stroke pattern buttons setup
         solidStrokeButton.setRadioGroupId(1);
@@ -423,14 +457,6 @@ public:
         heightLabel.setBounds(padding, y, labelWidth, buttonHeight);
         heightEditor.setBounds(padding + labelWidth, y, 60, buttonHeight);
     }
-    
-    void sliderValueChanged(juce::Slider* slider) override
-    {
-        if (slider == &strokeWidthSlider)
-            owner.setStrokeWidth((float)slider->getValue());
-        else if (slider == &cornerRadiusSlider)
-            owner.setCornerRadius((float)slider->getValue());
-    }
 
     void updateDimensionEditors(const MainComponent::Shape* shape)
     {
@@ -448,6 +474,41 @@ public:
             widthEditor.setEnabled(false);
             heightEditor.setEnabled(false);
         }
+    }
+    
+    void updateFromShape(const MainComponent::Shape* shape)
+    {
+        updatingFromShape = true;
+        
+        if (shape)
+        {
+            // Update all controls to reflect the selected shape's properties
+            fillToggle.setToggleState(shape->style.hasFill, juce::dontSendNotification);
+            strokeWidthSlider.setValue(shape->style.strokeWidth, juce::dontSendNotification);
+            cornerRadiusSlider.setValue(shape->style.cornerRadius, juce::dontSendNotification);
+            
+            fillColorButton.setColour(juce::TextButton::buttonColourId, shape->style.fillColour);
+            strokeColorButton.setColour(juce::TextButton::buttonColourId, shape->style.strokeColour);
+            
+            // Update stroke pattern buttons
+            solidStrokeButton.setToggleState(shape->style.strokePattern == MainComponent::StrokePattern::Solid, juce::dontSendNotification);
+            dashedStrokeButton.setToggleState(shape->style.strokePattern == MainComponent::StrokePattern::Dashed, juce::dontSendNotification);
+            dottedStrokeButton.setToggleState(shape->style.strokePattern == MainComponent::StrokePattern::Dotted, juce::dontSendNotification);
+            dashDotStrokeButton.setToggleState(shape->style.strokePattern == MainComponent::StrokePattern::DashDot, juce::dontSendNotification);
+            
+            // Update dimension editors
+            updateDimensionEditors(shape);
+        }
+        else
+        {
+            // Reset to default values or disable controls when no shape is selected
+            fillToggle.setToggleState(true, juce::dontSendNotification);
+            strokeWidthSlider.setValue(0.0, juce::dontSendNotification);
+            cornerRadiusSlider.setValue(0.0, juce::dontSendNotification);
+            updateDimensionEditors(nullptr);
+        }
+        
+        updatingFromShape = false;
     }
     
 private:
@@ -480,19 +541,18 @@ private:
             strokeColorButton.findColour(juce::TextButton::buttonColourId);
             
         auto& picker = isFillColor ? fillColorPicker : strokeColorPicker;
-        
         picker = std::make_unique<ColorPickerWindow>(windowTitle, initialColor,
             [this, isFillColor](juce::Colour newColour)
             {
                 if (isFillColor)
                 {
                     fillColorButton.setColour(juce::TextButton::buttonColourId, newColour);
-                    owner.setFillColour(newColour);
+                    owner.updateSelectedShapeFillColour(newColour);
                 }
                 else
                 {
                     strokeColorButton.setColour(juce::TextButton::buttonColourId, newColour);
-                    owner.setStrokeColour(newColour);
+                    owner.updateSelectedShapeStrokeColour(newColour);
                 }
             });
 
@@ -539,6 +599,8 @@ private:
     juce::Label heightLabel;
     juce::TextEditor widthEditor;
     juce::TextEditor heightEditor;
+    
+    bool updatingFromShape = false;  // prevent feedback loops
     
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(ToolPanel)
 };

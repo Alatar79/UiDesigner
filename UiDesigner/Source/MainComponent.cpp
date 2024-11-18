@@ -468,6 +468,18 @@ void MainComponent::mouseDown(const juce::MouseEvent& e)
         {
             selectedShapeIndex = -1;
             updateSelectionHandles();
+            updateToolPanelFromShape(nullptr);
+        }
+        else if (foundShape)
+        {
+            updateToolPanelFromShape(&shapes.getReference(selectedShapeIndex));
+        }
+        
+        /*
+        if (!foundShape && selectedShapeIndex != -1)
+        {
+            selectedShapeIndex = -1;
+            updateSelectionHandles();
             if (toolWindow != nullptr)
                 toolWindow->getToolPanel().updateDimensionEditors(nullptr);
         }
@@ -475,7 +487,7 @@ void MainComponent::mouseDown(const juce::MouseEvent& e)
         {
             if (toolWindow != nullptr)
                 toolWindow->getToolPanel().updateDimensionEditors(&shapes.getReference(selectedShapeIndex));
-        }
+        }*/
     }
     else
     {
@@ -805,6 +817,70 @@ void MainComponent::setStrokePattern(StrokePattern pattern)
     repaint();
 }
 
+void MainComponent::updateSelectedShapeFill(bool enabled)
+{
+    if (selectedShapeIndex >= 0)
+    {
+        shapes.getReference(selectedShapeIndex).style.hasFill = enabled;
+        repaint();
+    }
+    // Still update current style for new shapes
+    currentStyle.hasFill = enabled;
+}
+
+void MainComponent::updateSelectedShapeFillColour(juce::Colour colour)
+{
+    if (selectedShapeIndex >= 0)
+    {
+        shapes.getReference(selectedShapeIndex).style.fillColour = colour;
+        repaint();
+    }
+    currentStyle.fillColour = colour;
+}
+
+void MainComponent::updateSelectedShapeStrokeColour(juce::Colour colour)
+{
+    if (selectedShapeIndex >= 0)
+    {
+        shapes.getReference(selectedShapeIndex).style.strokeColour = colour;
+        repaint();
+    }
+    currentStyle.strokeColour = colour;
+}
+
+void MainComponent::updateSelectedShapeStrokeWidth(float width)
+{
+    if (selectedShapeIndex >= 0)
+    {
+        auto& shape = shapes.getReference(selectedShapeIndex);
+        if (shape.type == Tool::Line)
+            width = std::max(1.0f, width);
+        shape.style.strokeWidth = width;
+        repaint();
+    }
+    currentStyle.strokeWidth = width;
+}
+
+void MainComponent::updateSelectedShapeCornerRadius(float radius)
+{
+    if (selectedShapeIndex >= 0)
+    {
+        shapes.getReference(selectedShapeIndex).style.cornerRadius = radius;
+        repaint();
+    }
+    currentStyle.cornerRadius = radius;
+}
+
+void MainComponent::updateSelectedShapeStrokePattern(StrokePattern pattern)
+{
+    if (selectedShapeIndex >= 0)
+    {
+        shapes.getReference(selectedShapeIndex).style.strokePattern = pattern;
+        repaint();
+    }
+    currentStyle.strokePattern = pattern;
+}
+
 const MainComponent::Shape* MainComponent::getSelectedShape() const
 {
     return selectedShapeIndex >= 0 ? &shapes.getReference(selectedShapeIndex): nullptr;
@@ -817,6 +893,15 @@ void MainComponent::updateSelectedShapeBounds(const juce::Rectangle<float>& newB
         shapes.getReference(selectedShapeIndex).bounds = newBounds;
         updateSelectionHandles();
         repaint();
+    }
+}
+
+void MainComponent::updateToolPanelFromShape(const Shape* shape)
+{
+    if (toolWindow != nullptr)
+    {
+        auto& toolPanel = toolWindow->getToolPanel();
+        toolPanel.updateFromShape(shape);
     }
 }
 
