@@ -142,8 +142,12 @@ public:
     void setCornerRadius(float radius);
     void setStrokePattern(StrokePattern pattern);
     
+    const Shape* getSelectedShape() const;
+    void updateSelectedShapeBounds(const juce::Rectangle<float>& newBounds);
+    
 private:
     
+    void drawDimensionLabel(juce::Graphics& g, const Shape& shape);
     void showTools();
     void prepareRotation(const juce::MouseEvent& e, Shape& shape);
     void applyStyle(juce::Graphics& g, const Style& style);
@@ -151,6 +155,11 @@ private:
     template<typename PathFunction>
     void drawStrokedPath(juce::Graphics& g, const Style& style, PathFunction&& pathFunc);
 
+    void updateSelectionHandles();
+    void handleShapeManipulation(const juce::MouseEvent& e);
+    void rotateShape(const juce::MouseEvent& e);
+    void resizeShape(const juce::MouseEvent& e);
+    
     std::unique_ptr<ToolWindow> toolWindow;
     juce::TextButton showToolsButton;
     
@@ -172,11 +181,6 @@ private:
     juce::Point<float> lastMousePosition;
     float initialRotation = 0.0f;
     float initialAngle = 0.0f;
-
-    void updateSelectionHandles();
-    void handleShapeManipulation(const juce::MouseEvent& e);
-    void rotateShape(const juce::MouseEvent& e);
-    void resizeShape(const juce::MouseEvent& e);
     
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(MainComponent)
 };
@@ -335,6 +339,34 @@ public:
         dashDotStrokeButton.setRadioGroupId(1);
         
         solidStrokeButton.setToggleState(true, juce::dontSendNotification);
+        
+        addAndMakeVisible(widthLabel);
+        addAndMakeVisible(heightLabel);
+        addAndMakeVisible(widthEditor);
+        addAndMakeVisible(heightEditor);
+
+        widthLabel.setText("Width:", juce::dontSendNotification);
+        heightLabel.setText("Height:", juce::dontSendNotification);
+
+        widthEditor.setInputRestrictions(6, "0123456789");
+        heightEditor.setInputRestrictions(6, "0123456789");
+
+        widthEditor.onReturnKey = [this]() {
+            if (auto* shape = owner.getSelectedShape()) {
+                auto bounds = shape->bounds;
+                bounds.setWidth(widthEditor.getText().getFloatValue());
+                owner.updateSelectedShapeBounds(bounds);
+            }
+        };
+
+        heightEditor.onReturnKey = [this]() {
+            if (auto* shape = owner.getSelectedShape()) {
+                auto bounds = shape->bounds;
+                bounds.setHeight(heightEditor.getText().getFloatValue());
+                owner.updateSelectedShapeBounds(bounds);
+            }
+        };
+        
     }
     
     ~ToolPanel()
@@ -382,6 +414,14 @@ public:
         dashedStrokeButton.setBounds(padding * 2 + strokePatternWidth, y, strokePatternWidth, buttonHeight);
         dottedStrokeButton.setBounds(padding * 3 + strokePatternWidth * 2, y, strokePatternWidth, buttonHeight);
         dashDotStrokeButton.setBounds(padding * 4 + strokePatternWidth * 3, y, strokePatternWidth, buttonHeight);
+        
+        y += buttonHeight + padding;
+        widthLabel.setBounds(padding, y, labelWidth, buttonHeight);
+        widthEditor.setBounds(padding + labelWidth, y, 60, buttonHeight);
+        
+        y += buttonHeight + padding;
+        heightLabel.setBounds(padding, y, labelWidth, buttonHeight);
+        heightEditor.setBounds(padding + labelWidth, y, 60, buttonHeight);
     }
     
     void sliderValueChanged(juce::Slider* slider) override
@@ -392,6 +432,24 @@ public:
             owner.setCornerRadius((float)slider->getValue());
     }
 
+    void updateDimensionEditors(const MainComponent::Shape* shape)
+    {
+        if (shape && shape->type != MainComponent::Tool::Line)
+        {
+            widthEditor.setText(juce::String(static_cast<int>(std::abs(shape->bounds.getWidth()))), false);
+            heightEditor.setText(juce::String(static_cast<int>(std::abs(shape->bounds.getHeight()))), false);
+            widthEditor.setEnabled(true);
+            heightEditor.setEnabled(true);
+        }
+        else
+        {
+            widthEditor.setText("--");
+            heightEditor.setText("--");
+            widthEditor.setEnabled(false);
+            heightEditor.setEnabled(false);
+        }
+    }
+    
 private:
     
     void deleteColorPickers()
@@ -399,37 +457,6 @@ private:
         fillColorPicker = nullptr;
         strokeColorPicker = nullptr;
     }
-
-    /*
-    void showColorPicker(bool isFillColor)
-    {
-        juce::String windowTitle = isFillColor ? "Fill Color" : "Stroke Color";
-        juce::Colour initialColor = isFillColor ?
-            fillColorButton.findColour(juce::TextButton::buttonColourId) :
-            strokeColorButton.findColour(juce::TextButton::buttonColourId);
-            
-        auto* picker = new ColorPickerWindow(windowTitle, initialColor,
-            [this, isFillColor](juce::Colour newColour)
-            {
-                if (isFillColor)
-                {
-                    fillColorButton.setColour(juce::TextButton::buttonColourId, newColour);
-                    owner.setFillColour(newColour);
-                }
-                else
-                {
-                    strokeColorButton.setColour(juce::TextButton::buttonColourId, newColour);
-                    owner.setStrokeColour(newColour);
-                }
-            });
-            
-        // Position the color picker near the button that opened it
-        auto &button = isFillColor ? fillColorButton : strokeColorButton;
-        auto buttonPos = button.getBounds().getBottomLeft();
-        auto screenPos = button.localPointToGlobal(buttonPos);
-        picker->setTopLeftPosition(screenPos.x, screenPos.y);
-    }
-     */
     
     void showColorPicker(bool isFillColor)
     {
@@ -508,6 +535,11 @@ private:
     
     juce::ToggleButton fillToggle;
     
+    juce::Label widthLabel;
+    juce::Label heightLabel;
+    juce::TextEditor widthEditor;
+    juce::TextEditor heightEditor;
+    
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(ToolPanel)
 };
 
@@ -542,6 +574,11 @@ public:
     {
         // Just hide the window when the user clicks the close button
         setVisible(false);
+    }
+    
+    ToolPanel& getToolPanel()
+    {
+        return *toolPanel;
     }
 
 private:

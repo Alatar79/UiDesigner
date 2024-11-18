@@ -399,6 +399,12 @@ void MainComponent::paint(juce::Graphics& g)
         for (auto& handle : selectionHandles)
             handle.paint(g);
     }
+    
+    if (selectedShapeIndex >= 0 && selectedShapeIndex < shapes.size())
+    {
+        auto& selectedShape = shapes.getReference(selectedShapeIndex);
+        drawDimensionLabel(g, selectedShape);
+    }
 }
  
 void MainComponent::resized()
@@ -457,11 +463,18 @@ void MainComponent::mouseDown(const juce::MouseEvent& e)
                 break;
             }
         }
-
-        if (!foundShape && selectedShapeIndex != -1) // Only update if deselecting
+        
+        if (!foundShape && selectedShapeIndex != -1)
         {
             selectedShapeIndex = -1;
             updateSelectionHandles();
+            if (toolWindow != nullptr)
+                toolWindow->getToolPanel().updateDimensionEditors(nullptr);
+        }
+        else if (foundShape)
+        {
+            if (toolWindow != nullptr)
+                toolWindow->getToolPanel().updateDimensionEditors(&shapes.getReference(selectedShapeIndex));
         }
     }
     else
@@ -647,6 +660,9 @@ void MainComponent::resizeShape(const juce::MouseEvent& e)
     }
 
     updateSelectionHandles();
+    
+    if (toolWindow != nullptr)
+        toolWindow->getToolPanel().updateDimensionEditors(&shape);
 }
 
 void MainComponent::changeListenerCallback(juce::ChangeBroadcaster* source)
@@ -787,6 +803,90 @@ void MainComponent::setStrokePattern(StrokePattern pattern)
 {
     currentStyle.strokePattern = pattern;
     repaint();
+}
+
+const MainComponent::Shape* MainComponent::getSelectedShape() const
+{
+    return selectedShapeIndex >= 0 ? &shapes.getReference(selectedShapeIndex): nullptr;
+}
+
+void MainComponent::updateSelectedShapeBounds(const juce::Rectangle<float>& newBounds)
+{
+    if (selectedShapeIndex >= 0 && selectedShapeIndex < shapes.size())
+    {
+        shapes.getReference(selectedShapeIndex).bounds = newBounds;
+        updateSelectionHandles();
+        repaint();
+    }
+}
+
+void MainComponent::drawDimensionLabel(juce::Graphics& g, const Shape& shape)
+{
+    // Don't show dimensions for lines
+    if (shape.type == Tool::Line)
+        return;
+
+    // Format dimension text
+    juce::String dimensionText;
+    int width = static_cast<int>(std::abs(shape.bounds.getWidth()));
+    int height = static_cast<int>(std::abs(shape.bounds.getHeight()));
+    dimensionText = juce::String(width) + " × " + juce::String(height);
+
+    // Set up text appearance
+    g.setFont(14.0f);
+
+    // Position text below the shape
+    float centreX = shape.bounds.getCentreX();
+    float textY = shape.bounds.getBottom() + 15.0f;
+
+    // Draw with a light background for better visibility
+    float textWidth = g.getCurrentFont().getStringWidthFloat(dimensionText) * 1.3f;
+    float textHeight = g.getCurrentFont().getHeight() * 1.3f;
+    juce::Rectangle<float> textBounds(centreX - textWidth / 2, textY, textWidth, textHeight);
+    
+    // Save the current graphics state before rotation
+    juce::Graphics::ScopedSaveState stateSave(g);
+    
+    // Calculate the adjusted rotation angle to keep text readable
+    float adjustedRotation = shape.rotation;
+    
+    // Normalize the rotation angle to be between -180 and 180 degrees
+    while (adjustedRotation > juce::MathConstants<float>::pi)
+        adjustedRotation -= 2.0f * juce::MathConstants<float>::pi;
+    while (adjustedRotation < -juce::MathConstants<float>::pi)
+        adjustedRotation += 2.0f * juce::MathConstants<float>::pi;
+    
+    bool flipText = false;
+    // If rotation is beyond ±90 degrees, flip the text by 180 degrees
+    if (adjustedRotation > juce::MathConstants<float>::halfPi ||
+        adjustedRotation < -juce::MathConstants<float>::halfPi)
+    {
+        flipText = true;
+    }
+    
+    // Apply the same rotation as the shape
+    if (shape.rotation != 0.0f)
+    {
+        g.addTransform(juce::AffineTransform::rotation(
+            shape.rotation,
+            shape.rotationCenter.x,
+            shape.rotationCenter.y));
+    }
+    
+    //Check if we need to flip the text, to make sure its not upside-down.
+    if (flipText)
+    {
+        g.addTransform(juce::AffineTransform::rotation(
+           juce::MathConstants<float>::pi,
+           textBounds.getCentreX(),
+           textBounds.getCentreY()));
+    }
+    
+    g.setColour(juce::Colours::blue);
+    g.fillRect(textBounds);
+    
+    g.setColour(juce::Colours::white);
+    g.drawText(dimensionText, textBounds, juce::Justification::centred, false);
 }
 
 void MainComponent::showTools()
