@@ -106,8 +106,10 @@ public:
         Tool type;
         juce::Rectangle<float> bounds;
         Style style;
-        float rotation = 0.0f;  // Add rotation angle
-        juce::Point<float> rotationCenter;  // Add this line
+        float rotation = 0.0f;
+        juce::Point<float> rotationCenter;
+        juce::Point<float> lineStart;
+        juce::Point<float> lineEnd;
         
         bool hitTest(juce::Point<float> point) const;
         void initializeRotationCenter();

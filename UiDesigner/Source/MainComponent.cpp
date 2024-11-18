@@ -161,13 +161,15 @@ bool MainComponent::Shape::hitTest(juce::Point<float> point) const
     {
         case Tool::Rectangle:
             return bounds.contains(point);
+            
         case Tool::Ellipse:
             return bounds.reduced(style.strokeWidth * 0.5f)
                        .contains(point);
+                       
         case Tool::Line:
         {
             float threshold = style.strokeWidth + 4.0f;
-            juce::Line<float> line(bounds.getTopLeft(), bounds.getBottomRight());
+            juce::Line<float> line(lineStart, lineEnd);
             juce::Point<float> foundPoint;
             return line.getDistanceFromPoint(point, foundPoint) < threshold;
         }
@@ -185,7 +187,13 @@ void MainComponent::Shape::initializeRotationCenter()
 void MainComponent::Shape::move(float dx, float dy)
 {
     bounds.translate(dx, dy);
-    rotationCenter.addXY(dx, dy);  // Move the rotation center with the shape
+    rotationCenter.addXY(dx, dy);
+    
+    if (type == Tool::Line)
+    {
+        lineStart.addXY(dx, dy);
+        lineEnd.addXY(dx, dy);
+    }
 }
 
 
@@ -206,7 +214,6 @@ MainComponent::MainComponent()
     // Enable keyboard listening
     addKeyListener(this);
     setWantsKeyboardFocus(true);
-    
 }
 
 
@@ -227,7 +234,7 @@ void MainComponent::paint(juce::Graphics& g)
         if (style.strokeWidth > 0.0f)
         {
             drawStrokedPath(g, style, [&]()
-                            {
+            {
                 juce::Path path;
                 if (style.cornerRadius > 0.0f)
                     path.addRoundedRectangle(bounds, style.cornerRadius);
@@ -246,7 +253,7 @@ void MainComponent::paint(juce::Graphics& g)
         if (style.strokeWidth > 0.0f)
         {
             drawStrokedPath(g, style, [&]()
-                            {
+            {
                 juce::Path path;
                 path.addEllipse(bounds);
                 return path;
@@ -254,17 +261,16 @@ void MainComponent::paint(juce::Graphics& g)
         }
     };
     
-    auto drawLine = [&](const juce::Rectangle<float>& bounds, const Style style)
+    auto drawLine = [&](const Shape& shape)
     {
-        // For lines, ensure minimum stroke width of 1
-        Style lineStyle = style;
-        lineStyle.strokeWidth = std::max(1.0f, style.strokeWidth);
+        Style lineStyle = shape.style;
+        lineStyle.strokeWidth = std::max(1.0f, shape.style.strokeWidth);
         
         drawStrokedPath(g, lineStyle, [&]()
         {
             juce::Path path;
-            path.startNewSubPath(bounds.getTopLeft());
-            path.lineTo(bounds.getBottomRight());
+            path.startNewSubPath(shape.lineStart);
+            path.lineTo(shape.lineEnd);
             return path;
         });
     };
@@ -280,7 +286,7 @@ void MainComponent::paint(juce::Graphics& g)
             g.saveState();
             g.addTransform(juce::AffineTransform::rotation(
                 shape.rotation,
-                shape.rotationCenter.x,  // Use stored rotation center
+                shape.rotationCenter.x,
                 shape.rotationCenter.y));
         }
         
@@ -298,7 +304,7 @@ void MainComponent::paint(juce::Graphics& g)
             }
             case Tool::Line:
             {
-                drawLine(shape.bounds, shape.style);
+                drawLine(shape);
                 break;
             }
             default:
@@ -317,22 +323,28 @@ void MainComponent::paint(juce::Graphics& g)
     {
         applyStyle(g, currentStyle);
         
-        auto bounds = juce::Rectangle<float>(dragStart, dragEnd);
         switch (currentTool)
         {
             case Tool::Rectangle:
             {
+                auto bounds = juce::Rectangle<float>(dragStart, dragEnd);
                 drawRect(bounds, currentStyle);
                 break;
             }
             case Tool::Ellipse:
             {
+                auto bounds = juce::Rectangle<float>(dragStart, dragEnd);
                 drawEllipse(bounds, currentStyle);
                 break;
             }
             case Tool::Line:
             {
-                drawLine(bounds, currentStyle);
+                Shape previewShape;
+                previewShape.type = Tool::Line;
+                previewShape.style = currentStyle;
+                previewShape.lineStart = dragStart;
+                previewShape.lineEnd = dragEnd;
+                drawLine(previewShape);
                 break;
             }
             default:
@@ -343,7 +355,7 @@ void MainComponent::paint(juce::Graphics& g)
     // Draw selection indicators
     if (selectedShapeIndex >= 0 && selectedShapeIndex < shapes.size())
     {
-        auto& selectedShape = shapes.getReference(selectedShapeIndex);//shapes[selectedShapeIndex];
+        auto& selectedShape = shapes.getReference(selectedShapeIndex);
         
         // Draw selection outline
         g.setColour(juce::Colours::blue);
@@ -373,12 +385,10 @@ void MainComponent::paint(juce::Graphics& g)
         for (auto& handle : selectionHandles)
             handle.paint(g);
     }
-    
 }
  
 void MainComponent::resized()
 {
-
 }
 
 void MainComponent::mouseDown(const juce::MouseEvent& e)
@@ -433,6 +443,7 @@ void MainComponent::mouseDown(const juce::MouseEvent& e)
         dragEnd = e.position;
     }
 }
+
 void MainComponent::mouseDrag(const juce::MouseEvent& e)
 {
     if (currentTool == Tool::Select)
@@ -460,9 +471,30 @@ void MainComponent::mouseUp(const juce::MouseEvent& e)
         Shape shape;
         shape.type = currentTool;
         shape.style = currentStyle;
-        shape.bounds = juce::Rectangle<float>(dragStart, dragEnd);
-        shape.initializeRotationCenter();
         
+        if (currentTool == Tool::Line)
+        {
+            // For lines, store actual start and end points
+            shape.lineStart = dragStart;
+            shape.lineEnd = dragEnd;
+            
+            // Create bounds that encompass the line
+            float left = std::min(dragStart.x, dragEnd.x);
+            float right = std::max(dragStart.x, dragEnd.x);
+            float top = std::min(dragStart.y, dragEnd.y);
+            float bottom = std::max(dragStart.y, dragEnd.y);
+            
+            // Add some padding for hit testing
+            shape.bounds = juce::Rectangle<float>(left, top,
+                                                right - left,
+                                                bottom - top);
+        }
+        else
+        {
+            shape.bounds = juce::Rectangle<float>(dragStart, dragEnd);
+        }
+        
+        shape.initializeRotationCenter();
         shapes.add(shape);
         repaint();
     }
@@ -473,7 +505,7 @@ void MainComponent::handleShapeManipulation(const juce::MouseEvent& e)
     if (selectedShapeIndex >= 0 && selectedShapeIndex < shapes.size())
     {
         auto delta = e.position - lastMousePosition;
-        auto& shape = shapes.getReference(selectedShapeIndex);//shapes[selectedShapeIndex];
+        auto& shape = shapes.getReference(selectedShapeIndex);
 
         if (isDraggingHandle)
         {
@@ -525,39 +557,65 @@ void MainComponent::resizeShape(const juce::MouseEvent& e)
     // Create transformed delta
     juce::Point<float> transformedDelta(transformedDeltaX, transformedDeltaY);
 
-    // Handle resizing based on the active handle
-    switch (activeHandle)
+    if (shape.type == Tool::Line)
     {
-        case SelectionHandle::Type::TopLeft:
-            shape.bounds.setTop(shape.bounds.getY() + transformedDelta.y);
-            shape.bounds.setLeft(shape.bounds.getX() + transformedDelta.x);
-            break;
-        case SelectionHandle::Type::Top:
-            shape.bounds.setTop(shape.bounds.getY() + transformedDelta.y);
-            break;
-        case SelectionHandle::Type::TopRight:
-            shape.bounds.setTop(shape.bounds.getY() + transformedDelta.y);
-            shape.bounds.setRight(shape.bounds.getRight() + transformedDelta.x);
-            break;
-        case SelectionHandle::Type::Right:
-            shape.bounds.setRight(shape.bounds.getRight() + transformedDelta.x);
-            break;
-        case SelectionHandle::Type::BottomRight:
-            shape.bounds.setBottom(shape.bounds.getBottom() + transformedDelta.y);
-            shape.bounds.setRight(shape.bounds.getRight() + transformedDelta.x);
-            break;
-        case SelectionHandle::Type::Bottom:
-            shape.bounds.setBottom(shape.bounds.getBottom() + transformedDelta.y);
-            break;
-        case SelectionHandle::Type::BottomLeft:
-            shape.bounds.setBottom(shape.bounds.getBottom() + transformedDelta.y);
-            shape.bounds.setLeft(shape.bounds.getX() + transformedDelta.x);
-            break;
-        case SelectionHandle::Type::Left:
-            shape.bounds.setLeft(shape.bounds.getX() + transformedDelta.x);
-            break;
-        default:
-            break;
+        // For lines, we need to update the actual line points
+        switch (activeHandle)
+        {
+            case SelectionHandle::Type::TopLeft:
+                shape.lineStart.addXY(delta.x, delta.y);
+                break;
+            case SelectionHandle::Type::BottomRight:
+                shape.lineEnd.addXY(delta.x, delta.y);
+                break;
+            default:
+                break;
+        }
+        
+        // Update bounds to encompass the new line position
+        float left = std::min(shape.lineStart.x, shape.lineEnd.x);
+        float right = std::max(shape.lineStart.x, shape.lineEnd.x);
+        float top = std::min(shape.lineStart.y, shape.lineEnd.y);
+        float bottom = std::max(shape.lineStart.y, shape.lineEnd.y);
+        
+        shape.bounds = juce::Rectangle<float>(left, top, right - left, bottom - top);
+    }
+    else
+    {
+        // Handle resizing based on the active handle
+        switch (activeHandle)
+        {
+            case SelectionHandle::Type::TopLeft:
+                shape.bounds.setTop(shape.bounds.getY() + transformedDelta.y);
+                shape.bounds.setLeft(shape.bounds.getX() + transformedDelta.x);
+                break;
+            case SelectionHandle::Type::Top:
+                shape.bounds.setTop(shape.bounds.getY() + transformedDelta.y);
+                break;
+            case SelectionHandle::Type::TopRight:
+                shape.bounds.setTop(shape.bounds.getY() + transformedDelta.y);
+                shape.bounds.setRight(shape.bounds.getRight() + transformedDelta.x);
+                break;
+            case SelectionHandle::Type::Right:
+                shape.bounds.setRight(shape.bounds.getRight() + transformedDelta.x);
+                break;
+            case SelectionHandle::Type::BottomRight:
+                shape.bounds.setBottom(shape.bounds.getBottom() + transformedDelta.y);
+                shape.bounds.setRight(shape.bounds.getRight() + transformedDelta.x);
+                break;
+            case SelectionHandle::Type::Bottom:
+                shape.bounds.setBottom(shape.bounds.getBottom() + transformedDelta.y);
+                break;
+            case SelectionHandle::Type::BottomLeft:
+                shape.bounds.setBottom(shape.bounds.getBottom() + transformedDelta.y);
+                shape.bounds.setLeft(shape.bounds.getX() + transformedDelta.x);
+                break;
+            case SelectionHandle::Type::Left:
+                shape.bounds.setLeft(shape.bounds.getX() + transformedDelta.x);
+                break;
+            default:
+                break;
+        }
     }
 
     updateSelectionHandles();
@@ -570,12 +628,10 @@ void MainComponent::changeListenerCallback(juce::ChangeBroadcaster* source)
         if (currentlyEditingFillColour)
         {
             currentStyle.fillColour = cs->getCurrentColour();
-            //fillColorButton.setColour(juce::TextButton::buttonColourId, currentStyle.fillColour);
         }
         else
         {
             currentStyle.strokeColour = cs->getCurrentColour();
-            //strokeColorButton.setColour(juce::TextButton::buttonColourId, currentStyle.strokeColour);
         }
         repaint();
     }
@@ -585,18 +641,16 @@ bool MainComponent::keyPressed(const juce::KeyPress& key, Component* /*originati
 {
     if (selectedShapeIndex >= 0 && selectedShapeIndex < shapes.size())
     {
-        auto& shape = shapes.getReference(selectedShapeIndex);//shapes[selectedShapeIndex];
+        auto& shape = shapes.getReference(selectedShapeIndex);
         
         if (key == juce::KeyPress::deleteKey || key == juce::KeyPress::backspaceKey)
         {
-            // Delete selected shape
             shapes.remove(selectedShapeIndex);
             selectedShapeIndex = -1;
             updateSelectionHandles();
             repaint();
             return true;
         }
-        // Add shift+arrow keys for bigger movements
         else if (key.isKeyCode(juce::KeyPress::leftKey) && key.getModifiers().isShiftDown())
         {
             shape.move(-10.0f, 0.0f);
@@ -627,7 +681,6 @@ bool MainComponent::keyPressed(const juce::KeyPress& key, Component* /*originati
         }
         else if (key.isKeyCode(juce::KeyPress::leftKey))
         {
-            // Move left
             shape.move(-1.0f, 0.0f);
             updateSelectionHandles();
             repaint();
@@ -635,7 +688,6 @@ bool MainComponent::keyPressed(const juce::KeyPress& key, Component* /*originati
         }
         else if (key.isKeyCode(juce::KeyPress::rightKey))
         {
-            // Move right
             shape.move(1.0f, 0.0f);
             updateSelectionHandles();
             repaint();
@@ -643,7 +695,6 @@ bool MainComponent::keyPressed(const juce::KeyPress& key, Component* /*originati
         }
         else if (key.isKeyCode(juce::KeyPress::upKey))
         {
-            // Move up
             shape.move(0.0f, -1.0f);
             updateSelectionHandles();
             repaint();
@@ -651,7 +702,6 @@ bool MainComponent::keyPressed(const juce::KeyPress& key, Component* /*originati
         }
         else if (key.isKeyCode(juce::KeyPress::downKey))
         {
-            // Move down
             shape.move(0.0f, 1.0f);
             updateSelectionHandles();
             repaint();
@@ -664,17 +714,12 @@ bool MainComponent::keyPressed(const juce::KeyPress& key, Component* /*originati
 
 bool MainComponent::keyStateChanged(bool isKeyDown, Component *originatingComponent)
 {
-    return false; 
+    return false;
 }
 
 void MainComponent::setCurrentTool(Tool tool)
 {
     currentTool = tool;
-    
-    // For lines, ensure minimum stroke width of 1
-    //if (tool == Tool::Line)
-    //    currentStyle.strokeWidth = std::max(1.0f, currentStyle.strokeWidth);
-
 }
 
 void MainComponent::setFillEnabled(bool enabled)
@@ -697,8 +742,8 @@ void MainComponent::setStrokeColour(juce::Colour colour)
 
 void MainComponent::setStrokeWidth(float width)
 {
-    //if (currentTool == Tool::Line)
-    //    width = std::max(1.0f, width);
+    if (currentTool == Tool::Line)
+        width = std::max(1.0f, width);
     
     currentStyle.strokeWidth = width;
     repaint();
@@ -718,45 +763,6 @@ void MainComponent::setStrokePattern(StrokePattern pattern)
 
 void MainComponent::prepareRotation(const juce::MouseEvent& e, MainComponent::Shape& shape)
 {
-    // Get the corners of the bounding rectangle
-    auto topLeft = shape.bounds.getTopLeft();
-    auto topRight = shape.bounds.getTopRight();
-    auto bottomLeft = shape.bounds.getBottomLeft();
-    auto bottomRight = shape.bounds.getBottomRight();
-    
-    // Rotate all corners around the current rotation center using the current rotation
-    auto rotatePoint = [&shape](juce::Point<float> point) {
-        return SelectionHandle::rotatePointAround(point, shape.rotationCenter, shape.rotation);
-    };
-    
-    auto rotatedTopLeft = rotatePoint(topLeft);
-    auto rotatedTopRight = rotatePoint(topRight);
-    auto rotatedBottomLeft = rotatePoint(bottomLeft);
-    auto rotatedBottomRight = rotatePoint(bottomRight);
-    
-    juce::Point<float> tempCenter = {
-        (rotatedTopLeft.x + rotatedTopRight.x + rotatedBottomLeft.x + rotatedBottomRight.x) / 4.0f,
-        (rotatedTopLeft.y + rotatedTopRight.y + rotatedBottomLeft.y + rotatedBottomRight.y) / 4.0f
-    };
-    
-    auto rotatePointReverse = [&shape, tempCenter](juce::Point<float> point) {
-        return SelectionHandle::rotatePointAround(point, tempCenter, -shape.rotation);
-    };
-    
-    rotatedTopLeft = rotatePointReverse(rotatedTopLeft);
-    rotatedTopRight = rotatePointReverse(rotatedTopRight);
-    rotatedBottomLeft = rotatePointReverse(rotatedBottomLeft);
-    rotatedBottomRight = rotatePointReverse(rotatedBottomRight);
-    
-    //Create new bounds from the back-rotated rectangle:
-    shape.bounds = juce::Rectangle<float>(rotatedTopLeft, rotatedBottomRight);
-    
-    // Calculate the center of the back-rotated rectangle
-    shape.rotationCenter = {
-        (rotatedTopLeft.x + rotatedTopRight.x + rotatedBottomLeft.x + rotatedBottomRight.x) / 4.0f,
-        (rotatedTopLeft.y + rotatedTopRight.y + rotatedBottomLeft.y + rotatedBottomRight.y) / 4.0f
-    };
-    
     // Store initial angle for rotation
     initialAngle = std::atan2(e.position.y - shape.rotationCenter.y,
                              e.position.x - shape.rotationCenter.x);
@@ -840,22 +846,52 @@ void MainComponent::updateSelectionHandles()
         selectionHandles.clear();
         const auto& shape = shapes[selectedShapeIndex];
 
-        // Add resize handles
-        selectionHandles.add(SelectionHandle(SelectionHandle::Type::TopLeft));
-        selectionHandles.add(SelectionHandle(SelectionHandle::Type::Top));
-        selectionHandles.add(SelectionHandle(SelectionHandle::Type::TopRight));
-        selectionHandles.add(SelectionHandle(SelectionHandle::Type::Right));
-        selectionHandles.add(SelectionHandle(SelectionHandle::Type::BottomRight));
-        selectionHandles.add(SelectionHandle(SelectionHandle::Type::Bottom));
-        selectionHandles.add(SelectionHandle(SelectionHandle::Type::BottomLeft));
-        selectionHandles.add(SelectionHandle(SelectionHandle::Type::Left));
-        
-        // Add rotation handle
-        selectionHandles.add(SelectionHandle(SelectionHandle::Type::Rotate));
+        if (shape.type == Tool::Line)
+        {
+            // For lines, only show handles at the endpoints
+            selectionHandles.add(SelectionHandle(SelectionHandle::Type::TopLeft));
+            selectionHandles.add(SelectionHandle(SelectionHandle::Type::BottomRight));
+            
+            // Update handle positions for line endpoints
+            for (auto& handle : selectionHandles)
+            {
+                if (handle.getType() == SelectionHandle::Type::TopLeft)
+                {
+                    handle.updatePosition(juce::Rectangle<float>(shape.lineStart.x - 4,
+                                                               shape.lineStart.y - 4,
+                                                               8, 8),
+                                        shape.rotation,
+                                        shape.rotationCenter);
+                }
+                else // BottomRight
+                {
+                    handle.updatePosition(juce::Rectangle<float>(shape.lineEnd.x - 4,
+                                                               shape.lineEnd.y - 4,
+                                                               8, 8),
+                                        shape.rotation,
+                                        shape.rotationCenter);
+                }
+            }
+        }
+        else
+        {
+            // Add resize handles for rectangles and ellipses
+            selectionHandles.add(SelectionHandle(SelectionHandle::Type::TopLeft));
+            selectionHandles.add(SelectionHandle(SelectionHandle::Type::Top));
+            selectionHandles.add(SelectionHandle(SelectionHandle::Type::TopRight));
+            selectionHandles.add(SelectionHandle(SelectionHandle::Type::Right));
+            selectionHandles.add(SelectionHandle(SelectionHandle::Type::BottomRight));
+            selectionHandles.add(SelectionHandle(SelectionHandle::Type::Bottom));
+            selectionHandles.add(SelectionHandle(SelectionHandle::Type::BottomLeft));
+            selectionHandles.add(SelectionHandle(SelectionHandle::Type::Left));
+                        
+            // Add rotation handle
+            selectionHandles.add(SelectionHandle(SelectionHandle::Type::Rotate));
 
-        // Update handle positions
-        for (auto& handle : selectionHandles)
-            handle.updatePosition(shape.bounds, shape.rotation, shape.rotationCenter);
+            // Update handle positions
+            for (auto& handle : selectionHandles)
+                handle.updatePosition(shape.bounds, shape.rotation, shape.rotationCenter);
+        }
     }
     else
     {
