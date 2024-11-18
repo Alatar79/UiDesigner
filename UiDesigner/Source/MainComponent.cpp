@@ -181,7 +181,13 @@ bool MainComponent::Shape::hitTest(juce::Point<float> point) const
 
 void MainComponent::Shape::initializeRotationCenter()
 {
-    rotationCenter = bounds.getCentre();
+    if (type == Tool::Line) {
+        // For lines, use midpoint between start and end
+        rotationCenter = (lineStart + lineEnd) * 0.5f;
+    } else {
+        // For rectangles and ellipses, use bounds center
+        rotationCenter = bounds.getCentre();
+    }
 }
 
 void MainComponent::Shape::move(float dx, float dy)
@@ -763,11 +769,51 @@ void MainComponent::setStrokePattern(StrokePattern pattern)
 
 void MainComponent::prepareRotation(const juce::MouseEvent& e, MainComponent::Shape& shape)
 {
+    // Get the corners of the bounding rectangle
+    auto topLeft = shape.bounds.getTopLeft();
+    auto topRight = shape.bounds.getTopRight();
+    auto bottomLeft = shape.bounds.getBottomLeft();
+    auto bottomRight = shape.bounds.getBottomRight();
+    
+    // Rotate all corners around the current rotation center using the current rotation
+    auto rotatePoint = [&shape](juce::Point<float> point) {
+        return SelectionHandle::rotatePointAround(point, shape.rotationCenter, shape.rotation);
+    };
+    
+    auto rotatedTopLeft = rotatePoint(topLeft);
+    auto rotatedTopRight = rotatePoint(topRight);
+    auto rotatedBottomLeft = rotatePoint(bottomLeft);
+    auto rotatedBottomRight = rotatePoint(bottomRight);
+    
+    juce::Point<float> tempCenter = {
+        (rotatedTopLeft.x + rotatedTopRight.x + rotatedBottomLeft.x + rotatedBottomRight.x) / 4.0f,
+        (rotatedTopLeft.y + rotatedTopRight.y + rotatedBottomLeft.y + rotatedBottomRight.y) / 4.0f
+    };
+    
+    auto rotatePointReverse = [&shape, tempCenter](juce::Point<float> point) {
+        return SelectionHandle::rotatePointAround(point, tempCenter, -shape.rotation);
+    };
+    
+    rotatedTopLeft = rotatePointReverse(rotatedTopLeft);
+    rotatedTopRight = rotatePointReverse(rotatedTopRight);
+    rotatedBottomLeft = rotatePointReverse(rotatedBottomLeft);
+    rotatedBottomRight = rotatePointReverse(rotatedBottomRight);
+    
+    //Create new bounds from the back-rotated rectangle:
+    shape.bounds = juce::Rectangle<float>(rotatedTopLeft, rotatedBottomRight);
+    
+    // Calculate the center of the back-rotated rectangle
+    shape.rotationCenter = {
+        (rotatedTopLeft.x + rotatedTopRight.x + rotatedBottomLeft.x + rotatedBottomRight.x) / 4.0f,
+        (rotatedTopLeft.y + rotatedTopRight.y + rotatedBottomLeft.y + rotatedBottomRight.y) / 4.0f
+    };
+    
     // Store initial angle for rotation
     initialAngle = std::atan2(e.position.y - shape.rotationCenter.y,
                              e.position.x - shape.rotationCenter.x);
     initialRotation = shape.rotation;
 }
+
 
 void MainComponent::applyStyle(juce::Graphics& g, const Style& style)
 {
