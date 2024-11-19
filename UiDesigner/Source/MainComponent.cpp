@@ -18,7 +18,7 @@ StrokePatternButton::StrokePatternButton(const juce::String& name) : juce::Butto
 void StrokePatternButton::paintButton(juce::Graphics& g, bool isMouseOver, bool isButtonDown)
 {
     auto bounds = getLocalBounds();
-    g.setColour(isButtonDown ? juce::Colours::darkgrey : (isMouseOver ? juce::Colours::lightgrey : juce::Colours::white));
+    g.setColour((isButtonDown || getToggleState()) ? juce::Colours::grey : (isMouseOver ? juce::Colours::lightgrey : juce::Colours::white));
     g.fillRect(bounds);
     
     g.setColour(juce::Colours::black);
@@ -138,9 +138,44 @@ void SelectionHandle::paint(juce::Graphics& g)
     {
         // Draw a circular handle for rotation
         g.drawEllipse(handleBounds.toFloat(), 1.0f);
+        
         // Draw line connecting to the shape
         g.drawLine(handleBounds.getCentreX(), handleBounds.getBottom(),
                   handleBounds.getCentreX(), bounds_.getY());
+                  
+        // Draw rotation arrow icon above the handle
+        float iconSize = handleBounds.getWidth() * 1.25f;
+        juce::Rectangle<float> iconBounds(handleBounds.getCentreX() - iconSize/2,
+                                        handleBounds.getY() - iconSize - 4,
+                                        iconSize, iconSize);
+        
+        juce::Path arrow;
+        // Draw the circular arc
+        arrow.addArc(iconBounds.getX(),
+                    iconBounds.getY(),
+                    iconSize,  // radius
+                    iconSize,  // radius
+                    juce::MathConstants<float>::pi * 0.1f,   // startAngle
+                    juce::MathConstants<float>::pi * 1.6f,   // endAngle
+                    true);  // clockwise
+
+        // Calculate end point for arrow
+        float endAngle = juce::MathConstants<float>::pi * 1.6f;
+        float endX = iconBounds.getCentreX() + std::cos(endAngle) * iconSize * 0.5f;
+        float endY = iconBounds.getCentreY() + std::sin(endAngle) * iconSize * 0.5f;
+        
+        float dAngle = juce::MathConstants<float>::pi * 1.5f;
+        float dendX = iconBounds.getCentreX() + std::cos(dAngle) * iconSize * 0.5f;
+        float dendY = iconBounds.getCentreY() + std::sin(dAngle) * iconSize * 0.5f;
+        
+        arrow.addArrow(juce::Line<float>(
+            endX, endY,
+            dendX, dendY),
+            1.0f,  // line thickness
+            3.0f,  // arrow head width
+            4.0f); // arrow head length
+        
+        g.strokePath(arrow, juce::PathStrokeType(2.0f));
     }
 }
 
@@ -219,7 +254,7 @@ MainComponent::MainComponent()
     };
     
     // Set initial style
-    currentStyle.fillColour = juce::Colours::blue.withAlpha(0.5f);
+    currentStyle.fillColour = juce::Colours::lightgrey;
     currentStyle.strokeColour = juce::Colours::black;
     currentStyle.strokeWidth = 0.0f;
     currentStyle.strokePattern = StrokePattern::Solid;
@@ -383,7 +418,7 @@ void MainComponent::paint(juce::Graphics& g)
                 selectedShape.rotation,
                 selectedShape.rotationCenter.x,
                 selectedShape.rotationCenter.y));
-            g.strokePath(path, juce::PathStrokeType(4.0f, juce::PathStrokeType::mitered));
+            g.strokePath(path, juce::PathStrokeType(1.5f, juce::PathStrokeType::mitered));
             g.addTransform(juce::AffineTransform::rotation(
                 -selectedShape.rotation,
                 selectedShape.rotationCenter.x,
@@ -392,7 +427,7 @@ void MainComponent::paint(juce::Graphics& g)
         else
         {
             // For non-rotated shapes, just draw the bounds
-            g.drawRect(selectedShape.bounds, 2.0f);
+            g.drawRect(selectedShape.bounds, 1.5f);
         }
 
         // Draw selection handles
@@ -415,7 +450,7 @@ void MainComponent::resized()
     const int buttonHeight = 30;
     const int padding = 10;
     
-    showToolsButton.setBounds(getWidth() - buttonWidth - padding,
+    showToolsButton.setBounds(padding,
                              padding,
                              buttonWidth,
                              buttonHeight);
@@ -466,9 +501,7 @@ void MainComponent::mouseDown(const juce::MouseEvent& e)
         
         if (!foundShape && selectedShapeIndex != -1)
         {
-            selectedShapeIndex = -1;
-            updateSelectionHandles();
-            updateToolPanelFromShape(nullptr);
+            deselectAllShapes();
         }
         else if (foundShape)
         {
@@ -773,9 +806,18 @@ bool MainComponent::keyStateChanged(bool isKeyDown, Component *originatingCompon
     return false;
 }
 
+void MainComponent::deselectAllShapes()
+{
+    selectedShapeIndex = -1;
+    updateSelectionHandles();
+    updateToolPanelFromShape(nullptr);
+}
+
 void MainComponent::setCurrentTool(Tool tool)
 {
     currentTool = tool;
+    if (tool != Tool::Select)
+        deselectAllShapes();
 }
 
 void MainComponent::setFillEnabled(bool enabled)

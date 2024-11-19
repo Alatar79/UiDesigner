@@ -134,6 +134,7 @@ public:
     bool keyPressed(const juce::KeyPress& key, Component *originatingComponent) override;
     bool keyStateChanged (bool isKeyDown, Component *originatingComponent) override;
     
+    void deselectAllShapes();
     void setCurrentTool(Tool tool);
     void setFillEnabled(bool enabled);
     void setFillColour(juce::Colour colour);
@@ -246,16 +247,23 @@ class ToolPanel : public juce::Component
 public:
     ToolPanel(MainComponent& mainComponent) : owner(mainComponent)
     {
-        // Move all tool-related components from MainComponent to here
-        addAndMakeVisible(selectButton);
-        addAndMakeVisible(rectangleButton);
-        addAndMakeVisible(ellipseButton);
-        addAndMakeVisible(lineButton);
         
-        selectButton.setButtonText("Select");
-        rectangleButton.setButtonText("Rectangle");
-        ellipseButton.setButtonText("Ellipse");
-        lineButton.setButtonText("Line");
+        auto setupShapeButton = [this](juce::TextButton& b, const juce::String& text)
+        {
+            b.setButtonText(text);
+            b.setClickingTogglesState(true);
+            addAndMakeVisible(b);
+            b.setRadioGroupId(2);
+            b.setColour(juce::TextButton::textColourOnId, juce::Colours::black);
+            b.setColour(juce::TextButton::textColourOffId, juce::Colours::black);
+            b.setColour(juce::TextButton::buttonColourId, juce::Colours::white);
+            b.setColour(juce::TextButton::buttonOnColourId, juce::Colours::grey);
+        };
+        
+        setupShapeButton(selectButton, "Select");
+        setupShapeButton(rectangleButton, "Rectangle");
+        setupShapeButton(ellipseButton, "Ellipse");
+        setupShapeButton(lineButton, "Line");
         
         selectButton.onClick = [this]
         {
@@ -368,10 +376,14 @@ public:
 
         // Stroke pattern buttons setup
         solidStrokeButton.setRadioGroupId(1);
+        solidStrokeButton.setClickingTogglesState(true);
         dashedStrokeButton.setRadioGroupId(1);
+        dashedStrokeButton.setClickingTogglesState(true);
         dottedStrokeButton.setRadioGroupId(1);
+        dottedStrokeButton.setClickingTogglesState(true);
         dashDotStrokeButton.setRadioGroupId(1);
-        
+        dashDotStrokeButton.setClickingTogglesState(true);
+
         solidStrokeButton.setToggleState(true, juce::dontSendNotification);
         
         addAndMakeVisible(widthLabel);
@@ -501,10 +513,6 @@ public:
         }
         else
         {
-            // Reset to default values or disable controls when no shape is selected
-            fillToggle.setToggleState(true, juce::dontSendNotification);
-            strokeWidthSlider.setValue(0.0, juce::dontSendNotification);
-            cornerRadiusSlider.setValue(0.0, juce::dontSendNotification);
             updateDimensionEditors(nullptr);
         }
         
