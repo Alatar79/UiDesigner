@@ -5,6 +5,13 @@
     Created: 11 Nov 2024 10:52:48pm
     Author:  Martin S
 
+    You may use this code under the terms of the GPL v3 (see
+    www.gnu.org/licenses) or also the licensed attached to this project.
+
+    THIS CODE IS PROVIDED "AS IS" WITHOUT ANY WARRANTY, AND ALL WARRANTIES, WHETHER
+    EXPRESSED OR IMPLIED, INCLUDING MERCHANTABILITY AND FITNESS FOR PURPOSE, ARE
+    DISCLAIMED.
+ 
   ==============================================================================
 */
 
