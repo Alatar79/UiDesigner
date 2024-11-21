@@ -1257,17 +1257,23 @@ void ColorPickerWindow::changeListenerCallback(juce::ChangeBroadcaster*)
 
 ToolPanel::ToolPanel(MainComponent& mainComponent) : owner(mainComponent)
 {
-    
-    auto setupShapeButton = [this](juce::TextButton& b, const juce::String& text)
+ 
+    auto setupButton = [this](juce::TextButton& b, const juce::String& text)
     {
         b.setButtonText(text);
-        b.setClickingTogglesState(true);
-        addAndMakeVisible(b);
-        b.setRadioGroupId(2);
         b.setColour(juce::TextButton::textColourOnId, juce::Colours::black);
         b.setColour(juce::TextButton::textColourOffId, juce::Colours::black);
         b.setColour(juce::TextButton::buttonColourId, juce::Colours::white);
         b.setColour(juce::TextButton::buttonOnColourId, juce::Colours::grey);
+        addAndMakeVisible(b);
+
+    };
+    
+    auto setupShapeButton = [this, setupButton](juce::TextButton& b, const juce::String& text)
+    {
+        setupButton(b, text);
+        b.setClickingTogglesState(true);
+        b.setRadioGroupId(2);
     };
     
     setupShapeButton(selectButton, "Select");
@@ -1303,8 +1309,7 @@ ToolPanel::ToolPanel(MainComponent& mainComponent) : owner(mainComponent)
     addAndMakeVisible(strokeWidthSlider);
     cornerRadiusSlider.setColour(juce::Slider::textBoxTextColourId, juce::Colours::black);
     addAndMakeVisible(cornerRadiusSlider);
-    addAndMakeVisible(fillColorButton);
-    addAndMakeVisible(strokeColorButton);
+
 
     fillToggle.setColour(juce::ToggleButton::textColourId, juce::Colours::black);
     fillToggle.setColour(juce::ToggleButton::tickColourId, juce::Colours::black);
@@ -1317,8 +1322,8 @@ ToolPanel::ToolPanel(MainComponent& mainComponent) : owner(mainComponent)
     addAndMakeVisible(dottedStrokeButton);
     addAndMakeVisible(dashDotStrokeButton);
     
-    fillColorButton.setComponentID("fillColorButton");
-    strokeColorButton.setComponentID("strokeColorButton");
+    setupButton(fillColorButton, "Fill Color");
+    setupButton(strokeColorButton, "Stroke Color");
     
     // Set up slider listeners
     strokeWidthSlider.onValueChange = [this]

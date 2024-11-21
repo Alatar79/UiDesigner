@@ -254,8 +254,8 @@ private:
     juce::Slider cornerRadiusSlider;
     juce::Label cornerRadiusLabel;
     
-    juce::TextButton fillColorButton{ "Fill Color" };
-    juce::TextButton strokeColorButton{ "Stroke Color" };
+    juce::TextButton fillColorButton;
+    juce::TextButton strokeColorButton;
     juce::Label fillColorLabel;
     juce::Label strokeColorLabel;
     
