@@ -175,6 +175,7 @@ public:
     
 private:
     
+    void updateTextEditorSize();
     void updateToolPanelFromShape(const Shape* shape);
     void drawDimensionLabel(juce::Graphics& g, const Shape& shape);
     void showTools();
@@ -213,6 +214,7 @@ private:
     
     //Text tool related:
     bool isEditingText = false;
+    float currentEditorHeight = 0.0f;
     std::unique_ptr<juce::TextEditor> textEditor;
     
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(MainComponent)
