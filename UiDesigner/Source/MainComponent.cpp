@@ -1018,29 +1018,31 @@ void MainComponent::startTextEditing(juce::Point<float> position)
     // Create and set up text editor
     textEditor = std::make_unique<juce::TextEditor>("textEntry");
     textEditor->setMultiLine(true, false);
-    textEditor->setJustification(juce::Justification::left);
-    textEditor->setScrollbarsShown(false);  // Disable scrollbars
+    textEditor->setReturnKeyStartsNewLine(false);
+    textEditor->setScrollbarsShown(false);
     
-    // Set up font and calculate proper height
+    // Set up font
     juce::Font editorFont(currentStyle.fontFamily, currentStyle.fontSize, juce::Font::plain);
     textEditor->setFont(editorFont);
     
-    // Calculate proper height including ascent and descent
-    float height = editorFont.getHeight();
-    const float verticalPadding = 4.0f;
-    
-    // Remove any internal borders/margins
+    // Remove ALL possible sources of offset
     textEditor->setBorder(juce::BorderSize<int>(0));
-    textEditor->setIndents(0, 0);  // Remove horizontal and vertical indents
+    textEditor->setIndents(0, 0);
+    textEditor->setJustification(juce::Justification::topLeft);
+    textEditor->setLineSpacing(1.0f);
     
+    // Make it transparent
     textEditor->setColour(juce::TextEditor::backgroundColourId, juce::Colours::transparentWhite);
     textEditor->setColour(juce::TextEditor::outlineColourId, juce::Colours::transparentWhite);
     textEditor->setColour(juce::TextEditor::focusedOutlineColourId, juce::Colours::transparentWhite);
     textEditor->setColour(juce::TextEditor::textColourId, currentStyle.fillColour);
+    textEditor->setColour(juce::TextEditor::highlightColourId, juce::Colours::lightblue.withAlpha(0.3f));
     
-    // Position the editor
-    currentEditorHeight = height + (verticalPadding * 2);
-    textEditor->setBounds(position.x, position.y, 200, currentEditorHeight);
+    // Initial size
+    const float initialWidth = 200.0f;
+    currentEditorHeight = editorFont.getHeight();
+    textEditor->setBounds(position.x, position.y, initialWidth, currentEditorHeight);
+    
     addAndMakeVisible(textEditor.get());
     textEditor->grabKeyboardFocus();
     
@@ -1066,31 +1068,21 @@ void MainComponent::updateTextEditorSize()
     if (!textEditor)
         return;
         
-    auto text = textEditor->getText();
-    auto font = textEditor->getFont();
+    // Get current bounds to maintain position
+    auto bounds = textEditor->getBounds();
     
-    // Calculate text width
-    float textWidth = font.getStringWidthFloat(text);
-    
-    // Calculate text height based on word wrap
+    // Calculate new width based on content
+    float textWidth = textEditor->getTextWidth();
     float maxWidth = std::max(200.0f, textWidth + 10.0f);  // minimum width of 200
     
-    // Create temporary TextLayout to calculate wrapped height
-    //juce::TextLayout layout;
-    //layout.createLayout(text, maxWidth, font);
-    //float textHeight = layout.getHeight();
-    float textHeight = font.getHeight();
+    // Calculate new height based on content
+    float textHeight = textEditor->getTextHeight();
     
-    // Add some padding
-    const float verticalPadding = 4.0f;
-    float newHeight = textHeight + (verticalPadding * 2);
-    
-    // Update editor bounds while maintaining position
-    auto bounds = textEditor->getBounds();
+    // Update bounds while maintaining position
     textEditor->setBounds(bounds.getX(), bounds.getY(),
-                         maxWidth, newHeight);
+                         maxWidth, textHeight);
                          
-    currentEditorHeight = newHeight;
+    currentEditorHeight = textHeight;
     repaint();
 }
 
@@ -1107,16 +1099,14 @@ void MainComponent::finishTextEditing()
         textShape.text = newText;
         textShape.style = currentStyle;
         
-        // Create font
-        textShape.font = juce::Font(currentStyle.fontFamily, currentStyle.fontSize, juce::Font::plain);
+        // Create font with exact same properties as editor
+        textShape.font = textEditor->getFont();
         
-        // Calculate bounds based on text size
-        auto width = textShape.font.getStringWidth(newText);
-        
-        // Get the full height 
+        // Calculate exact text bounds
+        auto width = textShape.font.getStringWidthFloat(newText);
         float height = textShape.font.getHeight();
         
-        // Use exact editor position and calculate proper bounds
+        // Use editor's position but exact text dimensions
         auto editorBounds = textEditor->getBounds().toFloat();
         textShape.bounds = juce::Rectangle<float>(
             editorBounds.getX(),
