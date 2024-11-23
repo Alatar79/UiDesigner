@@ -206,8 +206,7 @@ bool MainComponent::Shape::hitTest(juce::Point<float> point) const
             return bounds.contains(point);
             
         case Tool::Ellipse:
-            return bounds.reduced(style.strokeWidth * 0.5f)
-                       .contains(point);
+            return bounds.contains(point);
                        
         case Tool::Line:
         {
@@ -216,6 +215,9 @@ bool MainComponent::Shape::hitTest(juce::Point<float> point) const
             juce::Point<float> foundPoint;
             return line.getDistanceFromPoint(point, foundPoint) < threshold;
         }
+            
+        case Tool::Text:
+            return bounds.contains(point);
             
         default:
             return false;
@@ -242,6 +244,45 @@ void MainComponent::Shape::move(float dx, float dy)
     {
         lineStart.addXY(dx, dy);
         lineEnd.addXY(dx, dy);
+    }
+}
+
+void MainComponent::Shape::drawText(juce::Graphics& g) const
+{
+    if (rotation != 0.0f)
+    {
+        g.saveState();
+        g.addTransform(juce::AffineTransform::rotation(
+            rotation,
+            rotationCenter.x,
+            rotationCenter.y));
+    }
+
+    g.setFont(font);
+    g.setColour(style.fillColour);
+
+    if (style.textStretchEnabled)
+    {
+        // Scale text to fit bounds while maintaining aspect ratio
+        auto textBounds = g.getCurrentFont().getStringWidth(text);
+        float scaleX = bounds.getWidth() / textBounds;
+        float scaleY = bounds.getHeight() / font.getHeight();
+        
+        g.addTransform(juce::AffineTransform::scale(scaleX, scaleY)
+                      .translated(bounds.getX(), bounds.getY()));
+        g.drawText(text, 0, 0, textBounds, font.getHeight(),
+                  juce::Justification::left, true);
+    }
+    else
+    {
+        // Figma-like behavior: text stays at original scale
+        g.drawText(text, bounds.toType<int>(),
+                  juce::Justification::left, true);
+    }
+
+    if (rotation != 0.0f)
+    {
+        g.restoreState();
     }
 }
 
@@ -363,6 +404,9 @@ void MainComponent::paint(juce::Graphics& g)
                 drawLine(shape);
                 break;
             }
+            case Tool::Text:
+                shape.drawText(g);
+                break;
             default:
                 break;
         }
@@ -470,6 +514,16 @@ void MainComponent::mouseDown(const juce::MouseEvent& e)
         return;
     
     lastMousePosition = e.position;
+    
+    if (currentTool == Tool::Text)
+    {
+        // Start text editing
+        if (!isEditingText)
+        {
+            startTextEditing(e.position);
+        }
+        return;
+    }
 
     if (currentTool == Tool::Select)
     {
@@ -650,7 +704,12 @@ void MainComponent::resizeShape(const juce::MouseEvent& e)
     // Create transformed delta
     juce::Point<float> transformedDelta(transformedDeltaX, transformedDeltaY);
 
-    if (shape.type == Tool::Line)
+    if (shape.type == Tool::Text && !shape.style.textStretchEnabled)
+    {
+        // For text, only allow moving without resizing (Figma-like behavior)
+        shape.bounds.translate(transformedDelta.x, transformedDelta.y);
+    }
+    else if (shape.type == Tool::Line)
     {
         // For lines, we need to update the actual line points
         switch (activeHandle)
@@ -930,6 +989,28 @@ void MainComponent::updateSelectedShapeStrokePattern(StrokePattern pattern)
     currentStyle.strokePattern = pattern;
 }
 
+void MainComponent::updateSelectedShapeFontSize(float size)
+{
+    if (selectedShapeIndex >= 0)
+    {
+        auto& shape = shapes.getReference(selectedShapeIndex);
+        if (shape.type == Tool::Text)
+        {
+            shape.style.fontSize = size;
+            shape.font.setHeight(size);
+            
+            // Recalculate bounds based on new font size
+            auto width = shape.font.getStringWidth(shape.text);
+            auto height = shape.font.getHeight();
+            shape.bounds.setSize(width, height);
+            
+            updateSelectionHandles();
+            repaint();
+        }
+    }
+    currentStyle.fontSize = size;
+}
+
 const MainComponent::Shape* MainComponent::getSelectedShape() const
 {
     return selectedShapeIndex >= 0 ? &shapes.getReference(selectedShapeIndex): nullptr;
@@ -944,6 +1025,73 @@ void MainComponent::updateSelectedShapeBounds(const juce::Rectangle<float>& newB
         repaint();
     }
 }
+
+void MainComponent::startTextEditing(juce::Point<float> position)
+{
+    isEditingText = true;
+    
+    // Create and set up text editor
+    textEditor = std::make_unique<juce::TextEditor>("textEntry");
+    textEditor->setMultiLine(true, false);
+    textEditor->setJustification(juce::Justification::left);
+    textEditor->setFont(juce::Font(currentStyle.fontSize));
+    textEditor->setColour(juce::TextEditor::backgroundColourId, juce::Colours::transparentWhite);
+    textEditor->setColour(juce::TextEditor::outlineColourId, juce::Colours::transparentWhite);
+    textEditor->setColour(juce::TextEditor::focusedOutlineColourId, juce::Colours::transparentWhite);
+    textEditor->setColour(juce::TextEditor::textColourId, currentStyle.fillColour);
+    
+    // Position the editor
+    textEditor->setBounds(position.x, position.y, 200, 30);
+    addAndMakeVisible(textEditor.get());
+    textEditor->grabKeyboardFocus();
+    
+    // Handle text completion
+    textEditor->onReturnKey = [this]()
+    {
+        finishTextEditing();
+    };
+    
+    textEditor->onFocusLost = [this]()
+    {
+        finishTextEditing();
+    };
+}
+
+void MainComponent::finishTextEditing()
+{
+    if (!isEditingText || textEditor == nullptr)
+        return;
+        
+    juce::String newText = textEditor->getText();
+    if (newText.isNotEmpty())
+    {
+        Shape textShape;
+        textShape.type = Tool::Text;
+        textShape.text = newText;
+        textShape.style = currentStyle;
+        
+        // Create font
+        textShape.font = juce::Font(currentStyle.fontFamily, currentStyle.fontSize, juce::Font::plain);
+        
+        // Calculate bounds based on text size
+        auto width = textShape.font.getStringWidth(newText);
+        auto height = textShape.font.getHeight();
+        textShape.bounds = juce::Rectangle<float>(
+            textEditor->getX(),
+            textEditor->getY(),
+            width,
+            height);
+            
+        textShape.initializeRotationCenter();
+        shapes.add(textShape);
+    }
+    
+    removeChildComponent(textEditor.get());
+    textEditor = nullptr;
+    isEditingText = false;
+    repaint();
+}
+
 
 void MainComponent::updateToolPanelFromShape(const Shape* shape)
 {
@@ -1186,7 +1334,7 @@ void MainComponent::updateSelectionHandles()
         }
         else
         {
-            // Add resize handles for rectangles and ellipses
+            // Add resize handles
             selectionHandles.add(SelectionHandle(SelectionHandle::Type::TopLeft));
             selectionHandles.add(SelectionHandle(SelectionHandle::Type::Top));
             selectionHandles.add(SelectionHandle(SelectionHandle::Type::TopRight));
@@ -1195,7 +1343,7 @@ void MainComponent::updateSelectionHandles()
             selectionHandles.add(SelectionHandle(SelectionHandle::Type::Bottom));
             selectionHandles.add(SelectionHandle(SelectionHandle::Type::BottomLeft));
             selectionHandles.add(SelectionHandle(SelectionHandle::Type::Left));
-                        
+             
             // Add rotation handle
             selectionHandles.add(SelectionHandle(SelectionHandle::Type::Rotate));
 
@@ -1442,6 +1590,22 @@ ToolPanel::ToolPanel(MainComponent& mainComponent) : owner(mainComponent)
         }
     };
     
+    setupShapeButton(textButton, "Text");
+    textButton.onClick = [this]
+    {
+        owner.setCurrentTool(MainComponent::Tool::Text);
+    };
+    
+    // Add text controls
+    fontSizeSlider.setRange(8.0, 72.0, 1.0);
+    fontSizeSlider.setValue(14.0);
+    fontSizeSlider.onValueChange = [this]
+    {
+        if (!updatingFromShape)
+            owner.updateSelectedShapeFontSize((float)fontSizeSlider.getValue());
+    };
+    addAndMakeVisible(fontSizeSlider);
+    
 }
 
 ToolPanel::~ToolPanel()
@@ -1465,8 +1629,9 @@ void ToolPanel::resized()
     rectangleButton.setBounds(padding, y + buttonHeight + padding, buttonWidth, buttonHeight);
     ellipseButton.setBounds(padding, y + (buttonHeight + padding) * 2, buttonWidth, buttonHeight);
     lineButton.setBounds(padding, y + (buttonHeight + padding) * 3, buttonWidth, buttonHeight);
+    textButton.setBounds(padding, y + (buttonHeight + padding) * 4, buttonWidth, buttonHeight);
     
-    y = y + (buttonHeight + padding) * 4;
+    y = y + (buttonHeight + padding) * 5;
     
     // Style controls
     auto labelWidth = 80;
@@ -1489,6 +1654,11 @@ void ToolPanel::resized()
     dashedStrokeButton.setBounds(padding * 2 + strokePatternWidth, y, strokePatternWidth, buttonHeight);
     dottedStrokeButton.setBounds(padding * 3 + strokePatternWidth * 2, y, strokePatternWidth, buttonHeight);
     dashDotStrokeButton.setBounds(padding * 4 + strokePatternWidth * 3, y, strokePatternWidth, buttonHeight);
+    
+    y += buttonHeight + padding;
+    // Add font size control
+    fontSizeLabel.setBounds(padding, y, labelWidth, buttonHeight);
+    fontSizeSlider.setBounds(padding + labelWidth, y, 200, buttonHeight);
     
     y += buttonHeight + padding;
     widthLabel.setBounds(padding, y, labelWidth, buttonHeight);
@@ -1539,6 +1709,10 @@ void ToolPanel::updateFromShape(const MainComponent::Shape* shape)
         
         // Update dimension editors
         updateDimensionEditors(shape);
+        
+        // Update text-specific controls
+        if (shape->type == MainComponent::Tool::Text)
+            fontSizeSlider.setValue(shape->style.fontSize, juce::dontSendNotification);
     }
     else
     {

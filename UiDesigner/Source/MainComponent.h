@@ -87,6 +87,7 @@ public:
         Rectangle,
         Ellipse,
         Line,
+        Text,
         Select
     };
 
@@ -105,7 +106,10 @@ public:
         float strokeWidth;
         StrokePattern strokePattern;
         bool hasFill;
-        float cornerRadius = 0.0f;  // Add this line
+        float cornerRadius = 0.0f;
+        float fontSize = 14.0f;
+        juce::String fontFamily = "Arial";
+        bool textStretchEnabled = false;
     };
 
     struct Shape
@@ -117,10 +121,15 @@ public:
         juce::Point<float> rotationCenter;
         juce::Point<float> lineStart;
         juce::Point<float> lineEnd;
+        juce::String text;
+        juce::Font font;
+        bool isEditing = false;  // Track if text is being edited
         
         bool hitTest(juce::Point<float> point) const;
         void initializeRotationCenter();
         void move(float dx, float dy);
+        void drawText(juce::Graphics& g) const;
+
     };
 
     MainComponent();
@@ -156,9 +165,13 @@ public:
     void updateSelectedShapeStrokeWidth(float width);
     void updateSelectedShapeCornerRadius(float radius);
     void updateSelectedShapeStrokePattern(StrokePattern pattern);
+    void updateSelectedShapeFontSize(float size);
         
     const Shape* getSelectedShape() const;
     void updateSelectedShapeBounds(const juce::Rectangle<float>& newBounds);
+    
+    void startTextEditing(juce::Point<float> position);
+    void finishTextEditing();
     
 private:
     
@@ -197,6 +210,10 @@ private:
     juce::Point<float> lastMousePosition;
     float initialRotation = 0.0f;
     float initialAngle = 0.0f;
+    
+    //Text tool related:
+    bool isEditingText = false;
+    std::unique_ptr<juce::TextEditor> textEditor;
     
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(MainComponent)
 };
@@ -270,6 +287,10 @@ private:
     juce::Label heightLabel;
     juce::TextEditor widthEditor;
     juce::TextEditor heightEditor;
+    
+    juce::TextButton textButton;
+    juce::Slider fontSizeSlider;
+    juce::Label fontSizeLabel;
     
     bool updatingFromShape = false;  // prevent feedback loops
     
