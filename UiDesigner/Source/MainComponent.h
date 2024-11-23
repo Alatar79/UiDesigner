@@ -140,7 +140,7 @@ public:
     void resized() override;
 
     void mouseDown(const juce::MouseEvent& e) override;
-
+    void mouseDoubleClick(const juce::MouseEvent& e) override;
     void mouseDrag(const juce::MouseEvent& e) override;
 
     void mouseUp(const juce::MouseEvent& e) override;
@@ -170,7 +170,7 @@ public:
     const Shape* getSelectedShape() const;
     void updateSelectedShapeBounds(const juce::Rectangle<float>& newBounds);
     
-    void startTextEditing(juce::Point<float> position);
+    void startTextEditing(juce::Point<float> position, const Shape* existingShape = nullptr);
     void finishTextEditing();
     
 private:
@@ -214,6 +214,8 @@ private:
     
     //Text tool related:
     bool isEditingText = false;
+    bool isEditingExistingText = false;
+    int editingShapeIndex = -1;
     float currentEditorHeight = 0.0f;
     std::unique_ptr<juce::TextEditor> textEditor;
     

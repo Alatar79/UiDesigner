@@ -358,8 +358,13 @@ void MainComponent::paint(juce::Graphics& g)
     };
     
     // Draw all completed shapes
-    for (const auto& shape : shapes)
+    for (int i = 0; i < shapes.size(); ++i)
     {
+        // Skip drawing the shape that's currently being edited
+        if (isEditingText && i == editingShapeIndex)
+            continue;
+            
+        const auto& shape = shapes.getReference(i);
         applyStyle(g, shape.style);
         
         if (shape.rotation != 0.0f)
@@ -553,26 +558,28 @@ void MainComponent::mouseDown(const juce::MouseEvent& e)
         {
             updateToolPanelFromShape(&shapes.getReference(selectedShapeIndex));
         }
-        
-        /*
-        if (!foundShape && selectedShapeIndex != -1)
-        {
-            selectedShapeIndex = -1;
-            updateSelectionHandles();
-            if (toolWindow != nullptr)
-                toolWindow->getToolPanel().updateDimensionEditors(nullptr);
-        }
-        else if (foundShape)
-        {
-            if (toolWindow != nullptr)
-                toolWindow->getToolPanel().updateDimensionEditors(&shapes.getReference(selectedShapeIndex));
-        }*/
     }
     else
     {
         isDrawing = true;
         dragStart = e.position;
         dragEnd = e.position;
+    }
+}
+
+void MainComponent::mouseDoubleClick(const juce::MouseEvent& e)
+{
+    if (currentTool == Tool::Select)
+    {
+        // Check each shape for a hit
+        for (int i = shapes.size() - 1; i >= 0; --i)
+        {
+            if (shapes[i].hitTest(e.position) && shapes[i].type == Tool::Text)
+            {
+                startTextEditing(e.position, &shapes.getReference(i));
+                break;
+            }
+        }
     }
 }
 
@@ -1011,9 +1018,24 @@ void MainComponent::updateSelectedShapeBounds(const juce::Rectangle<float>& newB
     }
 }
 
-void MainComponent::startTextEditing(juce::Point<float> position)
+void MainComponent::startTextEditing(juce::Point<float> position, const Shape* existingShape)
 {
     isEditingText = true;
+    isEditingExistingText = (existingShape != nullptr);
+    
+    // Store the index of the shape being edited
+    if (existingShape)
+    {
+        // Find the index of the existing shape
+        for (int i = 0; i < shapes.size(); ++i)
+        {
+            if (&shapes.getReference(i) == existingShape)
+            {
+                editingShapeIndex = i;
+                break;
+            }
+        }
+    }
     
     // Create and set up text editor
     textEditor = std::make_unique<juce::TextEditor>("textEntry");
@@ -1021,8 +1043,18 @@ void MainComponent::startTextEditing(juce::Point<float> position)
     textEditor->setReturnKeyStartsNewLine(false);
     textEditor->setScrollbarsShown(false);
     
-    // Set up font
-    juce::Font editorFont(currentStyle.fontFamily, currentStyle.fontSize, juce::Font::plain);
+    // Set up font and style
+    juce::Font editorFont;
+    if (existingShape)
+    {
+        editorFont = existingShape->font;
+        textEditor->setColour(juce::TextEditor::textColourId, existingShape->style.fillColour);
+    }
+    else
+    {
+        editorFont = juce::Font(currentStyle.fontFamily, currentStyle.fontSize, juce::Font::plain);
+        textEditor->setColour(juce::TextEditor::textColourId, currentStyle.fillColour);
+    }
     textEditor->setFont(editorFont);
     
     // Remove ALL possible sources of offset
@@ -1035,13 +1067,31 @@ void MainComponent::startTextEditing(juce::Point<float> position)
     textEditor->setColour(juce::TextEditor::backgroundColourId, juce::Colours::transparentWhite);
     textEditor->setColour(juce::TextEditor::outlineColourId, juce::Colours::transparentWhite);
     textEditor->setColour(juce::TextEditor::focusedOutlineColourId, juce::Colours::transparentWhite);
-    textEditor->setColour(juce::TextEditor::textColourId, currentStyle.fillColour);
     textEditor->setColour(juce::TextEditor::highlightColourId, juce::Colours::lightblue.withAlpha(0.3f));
     
-    // Initial size
-    const float initialWidth = 200.0f;
-    currentEditorHeight = editorFont.getHeight();
-    textEditor->setBounds(position.x, position.y, initialWidth, currentEditorHeight);
+    // Set position and initial size
+    if (existingShape)
+    {
+        auto bounds = existingShape->bounds;
+        if (existingShape->rotation != 0.0f)
+        {
+            // If text is rotated, temporarily un-rotate it for editing
+            bounds = bounds.transformedBy(juce::AffineTransform::rotation(
+                -existingShape->rotation,
+                existingShape->rotationCenter.x,
+                existingShape->rotationCenter.y));
+        }
+        textEditor->setBounds(bounds.toType<int>());
+        textEditor->setText(existingShape->text, false);
+        textEditor->selectAll();  // Select all text for convenience
+    }
+    else
+    {
+        // Initial size for new text
+        const float initialWidth = 200.0f;
+        currentEditorHeight = editorFont.getHeight();
+        textEditor->setBounds(position.x, position.y, initialWidth, currentEditorHeight);
+    }
     
     addAndMakeVisible(textEditor.get());
     textEditor->grabKeyboardFocus();
@@ -1062,7 +1112,6 @@ void MainComponent::startTextEditing(juce::Point<float> position)
         finishTextEditing();
     };
 }
-
 void MainComponent::updateTextEditorSize()
 {
     if (!textEditor)
@@ -1094,36 +1143,61 @@ void MainComponent::finishTextEditing()
     juce::String newText = textEditor->getText();
     if (newText.isNotEmpty())
     {
-        Shape textShape;
-        textShape.type = Tool::Text;
-        textShape.text = newText;
-        textShape.style = currentStyle;
-        
-        // Create font with exact same properties as editor
-        textShape.font = textEditor->getFont();
-        
-        // Calculate exact text bounds
-        auto width = textShape.font.getStringWidthFloat(newText);
-        float height = textShape.font.getHeight();
-        
-        // Use editor's position but exact text dimensions
-        auto editorBounds = textEditor->getBounds().toFloat();
-        textShape.bounds = juce::Rectangle<float>(
-            editorBounds.getX(),
-            editorBounds.getY(),
-            width,
-            height);
+        if (isEditingExistingText && editingShapeIndex >= 0)
+        {
+            // Update existing shape
+            auto& existingShape = shapes.getReference(editingShapeIndex);
             
-        textShape.initializeRotationCenter();
-        shapes.add(textShape);
+            // Store rotation info
+            float rotation = existingShape.rotation;
+            juce::Point<float> rotationCenter = existingShape.rotationCenter;
+            
+            // Update text and recalculate bounds
+            existingShape.text = newText;
+            float width = existingShape.font.getStringWidthFloat(newText);
+            float height = existingShape.font.getHeight();
+            
+            existingShape.bounds.setSize(width, height);
+            
+            // Restore rotation
+            existingShape.rotation = rotation;
+            existingShape.rotationCenter = rotationCenter;
+            
+            updateSelectionHandles();
+        }
+        else
+        {
+            // Create new shape (existing code for new text creation)
+            Shape textShape;
+            textShape.type = Tool::Text;
+            textShape.text = newText;
+            textShape.style = currentStyle;
+            textShape.font = textEditor->getFont();
+            
+            auto width = textShape.font.getStringWidthFloat(newText);
+            float ascent = textShape.font.getAscent();
+            float descent = textShape.font.getDescent();
+            float height = ascent + descent;
+            
+            auto editorBounds = textEditor->getBounds().toFloat();
+            textShape.bounds = juce::Rectangle<float>(
+                editorBounds.getX(),
+                editorBounds.getY(),
+                width,
+                height);
+                
+            textShape.initializeRotationCenter();
+            shapes.add(textShape);
+        }
     }
     
     removeChildComponent(textEditor.get());
     textEditor = nullptr;
     isEditingText = false;
+    isEditingExistingText = false;  // Reset the flag
+    editingShapeIndex = -1;  // Reset the editing index
     repaint();
 }
-
 
 void MainComponent::updateToolPanelFromShape(const Shape* shape)
 {
