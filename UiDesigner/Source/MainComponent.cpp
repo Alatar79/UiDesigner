@@ -249,21 +249,12 @@ void MainComponent::Shape::move(float dx, float dy)
 
 void MainComponent::Shape::drawText(juce::Graphics& g) const
 {
-    if (rotation != 0.0f)
-    {
-        g.saveState();
-        g.addTransform(juce::AffineTransform::rotation(
-            rotation,
-            rotationCenter.x,
-            rotationCenter.y));
-    }
-
+    // Don't apply rotation here - it's handled by the main drawing code
     g.setFont(font);
     g.setColour(style.fillColour);
 
     if (style.textStretchEnabled)
     {
-        // Scale text to fit bounds while maintaining aspect ratio
         auto textBounds = g.getCurrentFont().getStringWidth(text);
         float scaleX = bounds.getWidth() / textBounds;
         float scaleY = bounds.getHeight() / font.getHeight();
@@ -275,14 +266,8 @@ void MainComponent::Shape::drawText(juce::Graphics& g) const
     }
     else
     {
-        // Figma-like behavior: text stays at original scale
         g.drawText(text, bounds.toType<int>(),
                   juce::Justification::left, true);
-    }
-
-    if (rotation != 0.0f)
-    {
-        g.restoreState();
     }
 }
 
@@ -1034,14 +1019,22 @@ void MainComponent::startTextEditing(juce::Point<float> position)
     textEditor = std::make_unique<juce::TextEditor>("textEntry");
     textEditor->setMultiLine(true, false);
     textEditor->setJustification(juce::Justification::left);
-    textEditor->setFont(juce::Font(currentStyle.fontSize));
+    
+    // Set up font and calculate proper height
+    juce::Font editorFont(currentStyle.fontFamily, currentStyle.fontSize, juce::Font::plain);
+    textEditor->setFont(editorFont);
+    
+    // Calculate proper height including ascent and descent
+    float height = editorFont.getHeight();
+    const float verticalPadding = 4.0f;  // A bit more padding for the editor
+    
     textEditor->setColour(juce::TextEditor::backgroundColourId, juce::Colours::transparentWhite);
     textEditor->setColour(juce::TextEditor::outlineColourId, juce::Colours::transparentWhite);
     textEditor->setColour(juce::TextEditor::focusedOutlineColourId, juce::Colours::transparentWhite);
     textEditor->setColour(juce::TextEditor::textColourId, currentStyle.fillColour);
     
-    // Position the editor
-    textEditor->setBounds(position.x, position.y, 200, 30);
+    // Position the editor with calculated height
+    textEditor->setBounds(position.x, position.y, 200, height + (verticalPadding * 2));
     addAndMakeVisible(textEditor.get());
     textEditor->grabKeyboardFocus();
     
@@ -1593,7 +1586,12 @@ ToolPanel::ToolPanel(MainComponent& mainComponent) : owner(mainComponent)
     setupShapeButton(textButton, "Text");
     textButton.onClick = [this]
     {
+        // Set default black color for text
+        owner.setFillColour(juce::Colours::black);
         owner.setCurrentTool(MainComponent::Tool::Text);
+        
+        // Update the fill color button to show black
+        fillColorButton.setColour(juce::TextButton::buttonColourId, juce::Colours::black);
     };
     
     // Add text controls
