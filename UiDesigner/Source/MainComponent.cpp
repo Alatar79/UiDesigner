@@ -1747,12 +1747,14 @@ ToolPanel::ToolPanel(MainComponent& mainComponent) : owner(mainComponent)
     // Add text controls
     fontSizeSlider.setRange(8.0, 72.0, 1.0);
     fontSizeSlider.setValue(14.0);
+    fontSizeSlider.setColour(juce::Slider::textBoxTextColourId, juce::Colours::black);
     fontSizeSlider.onValueChange = [this]
     {
         if (!updatingFromShape)
             owner.updateSelectedShapeFontSize((float)fontSizeSlider.getValue());
     };
     addAndMakeVisible(fontSizeSlider);
+    addLabel(fontSizeLabel, "Font Size");
     
 }
 
