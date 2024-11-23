@@ -1112,6 +1112,7 @@ void MainComponent::startTextEditing(juce::Point<float> position, const Shape* e
         finishTextEditing();
     };
 }
+
 void MainComponent::updateTextEditorSize()
 {
     if (!textEditor)
@@ -1120,18 +1121,49 @@ void MainComponent::updateTextEditorSize()
     // Get current bounds to maintain position
     auto bounds = textEditor->getBounds();
     
-    // Calculate new width based on content
-    float textWidth = textEditor->getTextWidth();
-    float maxWidth = std::max(200.0f, textWidth + 10.0f);  // minimum width of 200
+    // Calculate width based on actual text content using the font
+    juce::String currentText = textEditor->getText();
+    float textWidth = textEditor->getFont().getStringWidthFloat(currentText);
+    float newWidth;
+    
+    if (isEditingExistingText)
+    {
+        newWidth = textWidth + 10.0f;  // Small padding
+    }
+    else
+    {
+        newWidth = std::max(200.0f, textWidth + 10.0f);
+    }
     
     // Calculate new height based on content
     float textHeight = textEditor->getTextHeight();
     
-    // Update bounds while maintaining position
+    // Update editor bounds while maintaining position
     textEditor->setBounds(bounds.getX(), bounds.getY(),
-                         maxWidth, textHeight);
-                         
+                         newWidth, textHeight);
+    
     currentEditorHeight = textHeight;
+
+    // If we're editing an existing shape, update its bounds to match
+    if (isEditingExistingText && editingShapeIndex >= 0)
+    {
+        auto& shape = shapes.getReference(editingShapeIndex);
+        
+        // Store rotation info
+        float rotation = shape.rotation;
+        juce::Point<float> rotationCenter = shape.rotationCenter;
+        
+        // Update bounds to match new text size
+        shape.bounds.setSize(newWidth, textHeight);
+        
+        // Maintain rotation
+        shape.rotation = rotation;
+        shape.rotationCenter = rotationCenter;
+        
+        // Update selection handles to match new bounds
+        updateSelectionHandles();
+    }
+    
     repaint();
 }
 
