@@ -1026,7 +1026,6 @@ void MainComponent::startTextEditing(juce::Point<float> position, const Shape* e
     // Store the index of the shape being edited
     if (existingShape)
     {
-        // Find the index of the existing shape
         for (int i = 0; i < shapes.size(); ++i)
         {
             if (&shapes.getReference(i) == existingShape)
@@ -1073,17 +1072,18 @@ void MainComponent::startTextEditing(juce::Point<float> position, const Shape* e
     if (existingShape)
     {
         auto bounds = existingShape->bounds;
+        textEditor->setBounds(bounds.toType<int>());
+        textEditor->setText(existingShape->text, false);
+        textEditor->selectAll();
+
+        // Apply rotation if the text is rotated
         if (existingShape->rotation != 0.0f)
         {
-            // If text is rotated, temporarily un-rotate it for editing
-            bounds = bounds.transformedBy(juce::AffineTransform::rotation(
-                -existingShape->rotation,
+            textEditor->setTransform(juce::AffineTransform::rotation(
+                existingShape->rotation,
                 existingShape->rotationCenter.x,
                 existingShape->rotationCenter.y));
         }
-        textEditor->setBounds(bounds.toType<int>());
-        textEditor->setText(existingShape->text, false);
-        textEditor->selectAll();  // Select all text for convenience
     }
     else
     {
@@ -1117,7 +1117,10 @@ void MainComponent::updateTextEditorSize()
 {
     if (!textEditor)
         return;
-        
+    
+    // Store current transform before resizing
+    auto currentTransform = textEditor->getTransform();
+    
     // Get current bounds to maintain position
     auto bounds = textEditor->getBounds();
     
@@ -1128,23 +1131,25 @@ void MainComponent::updateTextEditorSize()
     
     if (isEditingExistingText)
     {
-        newWidth = textWidth + 10.0f;  // Small padding
+        newWidth = textWidth + 10.0f;
     }
     else
     {
         newWidth = std::max(200.0f, textWidth + 10.0f);
     }
     
-    // Calculate new height based on content
     float textHeight = textEditor->getTextHeight();
     
     // Update editor bounds while maintaining position
     textEditor->setBounds(bounds.getX(), bounds.getY(),
                          newWidth, textHeight);
     
+    // Reapply the transform after resizing
+    textEditor->setTransform(currentTransform);
+    
     currentEditorHeight = textHeight;
 
-    // If we're editing an existing shape, update its bounds to match
+    // Update shape bounds if editing existing
     if (isEditingExistingText && editingShapeIndex >= 0)
     {
         auto& shape = shapes.getReference(editingShapeIndex);
